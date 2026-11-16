@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guías de ayuda para tus cámaras</title>
+<style>
+:root{--bg:#EEF1F2;--sf:#fff;--ink:#14202B;--mut:#5B6B77;--ln:#D2DADF;--ac:#0F7C7E;--acx:#fff;--wr:#B7660B}
+@media (prefers-color-scheme:dark){:root{--bg:#0E161D;--sf:#17222B;--ink:#E7EDF0;--mut:#93A3AE;--ln:#2A3A46;--ac:#3DB8BA;--acx:#0E161D;--wr:#E8A33D}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,sans-serif}
+main{max-width:560px;margin:auto;padding:16px}
+h1{font-size:1.4rem;margin:12px 0 4px}
+p{margin:0 0 12px;color:var(--mut)}
+a{color:var(--ac)}
+details{background:var(--sf);border:1px solid var(--ln);border-radius:10px;margin-bottom:10px}
+summary{cursor:pointer;padding:14px 16px;font-weight:700;list-style:none;display:flex;justify-content:space-between;gap:12px;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";flex:none;font-size:1.3rem;line-height:1;color:var(--ac)}
+details[open] summary::after{content:"–"}
+summary:focus-visible{outline:3px solid var(--ac);outline-offset:2px;border-radius:10px}
+.body{padding:0 16px 16px;color:var(--ink)}
+.body ol,.body ul{margin:0 0 12px;padding-left:22px}
+.body li{margin-bottom:6px}
+.body p{color:var(--ink);margin:0 0 10px}
+.tip{border-left:3px solid var(--ac);padding:2px 0 2px 12px;color:var(--mut);margin:12px 0 0;font-size:.95rem}
+.warn{border-left:3px solid var(--wr);padding:2px 0 2px 12px;margin:12px 0 0;font-size:.95rem}
+.cta{display:block;text-align:center;background:var(--ac);color:var(--acx);text-decoration:none;border-radius:8px;padding:12px 16px;font-weight:600;margin:18px 0 8px}
+.note{font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<h1>Guías de ayuda para tus cámaras</h1>
+<p>Antes de pedir una visita, mirá si tu problema se resuelve en unos minutos. Tocá la guía que necesites.</p>
+
+<details>
+<summary>Instalar la app en el celular</summary>
+<div class="body">
+<ol>
+<li>Abrí la tienda de tu celular: App Store en iPhone o Google Play en Android.</li>
+<li>Buscá <b>DMSS</b> (de Dahua Technology) e instalala.</li>
+<li>Abrila, aceptá los permisos que te pida (la cámara del celular sirve para escanear códigos QR, y las notificaciones para recibir avisos).</li>
+<li>Creá una cuenta con tu correo, o ingresá si ya tenés una.</li>
+</ol>
+<p class="tip">Usá siempre la app oficial. Nosotros nunca te vamos a pedir tu contraseña por mensaje.</p>
+</div>
+</details>
+
+<details>
+<summary>Ver mis cámaras desde el celular</summary>
+<div class="body">
+<ol>
+<li>Abrí la app DMSS e iniciá sesión.</li>
+<li>Tocá el botón <b>+</b> para agregar un equipo.</li>
+<li>Escaneá el código QR que está en la etiqueta del grabador o de la cámara. Si no lo encontrás, podés escribir el número de serie a mano.</li>
+<li>Poné la contraseña del equipo y un nombre fácil de reconocer, por ejemplo "Casa" o "Local".</li>
+<li>Tocá la imagen para ver en vivo.</li>
+</ol>
+<p class="tip">El equipo tiene que estar encendido y con internet. Si no tenés la contraseña del equipo, escribinos y te ayudamos.</p>
+</div>
+</details>
+
+<details>
+<summary>Mi cámara dice "fuera de línea" o no veo imagen</summary>
+<div class="body">
+<ol>
+<li>Revisá que el grabador o la cámara estén encendidos y con sus luces prendidas.</li>
+<li>Comprobá que haya internet en tu casa o local: probá abrir una página desde otro dispositivo.</li>
+<li>Reiniciá el router: desenchufalo 30 segundos, volvé a enchufarlo y esperá unos 5 minutos.</li>
+<li>Si sigue igual, reiniciá el grabador (mirá la guía de reinicio).</li>
+</ol>
+<p class="tip">Si después de esto sigue sin verse, pedí una visita y, si podés, adjuntá una foto del grabador con sus luces.</p>
+</div>
+</details>
+
+<details>
+<summary>Restablecer o cambiar la contraseña</summary>
+<div class="body">
+<p><b>Si te acordás de la contraseña y querés cambiarla:</b> en la app DMSS entrá al equipo, abrí su configuración y buscá la opción de cambiar la contraseña.</p>
+<p><b>Si la olvidaste:</b> muchos equipos permiten recuperarla desde la pantalla del grabador, donde aparece un código QR que se escanea con la app. Otros usan un correo de recuperación o preguntas de seguridad que se cargaron al instalar.</p>
+<p class="warn"><b>No uses el botoncito de reset del equipo</b> sin consultarnos antes: puede borrar la configuración (cámaras, horarios y usuarios).</p>
+<p class="tip">Por seguridad, no compartas con nadie tu contraseña ni el código QR de recuperación. Si no podés recuperarla, escribinos.</p>
+</div>
+</details>
+
+<details>
+<summary>Reiniciar el grabador o una cámara</summary>
+<div class="body">
+<p><b>Grabador (NVR o DVR):</b></p>
+<ol>
+<li>Lo más seguro es reiniciarlo desde su menú: con el mouse conectado, hacé clic derecho, entrá al menú principal y buscá la opción de reiniciar. El nombre exacto puede variar según el modelo.</li>
+<li>Esperá unos 3 minutos a que vuelva a arrancar.</li>
+</ol>
+<p class="warn">Evitá desenchufar el grabador de golpe si está funcionando: puede dañar el disco y perder grabaciones. Hacelo solo si está completamente trabado y no responde. En ese caso, desenchufalo, esperá 30 segundos y volvé a enchufarlo.</p>
+<p><b>Cámara:</b> desenchufá su fuente de alimentación (o el cable de red, si se alimenta por ese cable) durante 30 segundos y volvé a conectarla. Esperá 2 o 3 minutos.</p>
+</div>
+</details>
+
+<details>
+<summary>El grabador pita o no está grabando</summary>
+<div class="body">
+<ul>
+<li>Un pitido repetido en el grabador puede indicar un problema con el disco o con la grabación.</li>
+<li>Fijate si en la pantalla aparece el ícono de grabación en cada cámara.</li>
+<li>No lo apagues y prendas varias veces: puede empeorar el problema.</li>
+</ul>
+<p class="tip">Pedí una visita técnica y adjuntá una foto o un video corto del mensaje que aparece en pantalla. Así el técnico llega con el repuesto correcto.</p>
+</div>
+</details>
+
+<a class="cta" href="solicitar.html">Pedir una visita técnica</a>
+<p class="note">Los nombres de los menús pueden cambiar según el modelo y la versión de tu equipo. Si algo no coincide con lo que ves, no sigas probando: escribinos.</p>
+<p><a href="index.html">← Volver al inicio</a></p>
+</main>
+</body>
+</html>

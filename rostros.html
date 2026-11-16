@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Carga de fotos para reconocimiento facial</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#EEF1F2;--sf:#fff;--ink:#14202B;--mut:#5B6B77;--ln:#D2DADF;--ac:#0F7C7E;--acx:#fff;--ok:#1E7A46;--wr:#B7660B}
+@media (prefers-color-scheme:dark){:root{--bg:#0E161D;--sf:#17222B;--ink:#E7EDF0;--mut:#93A3AE;--ln:#2A3A46;--ac:#3DB8BA;--acx:#0E161D;--ok:#55C283;--wr:#E8A33D}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+main{max-width:560px;margin:auto;padding:16px}
+h1{font-size:1.4rem;margin:12px 0 4px}
+p{margin:0 0 12px;color:var(--mut)}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:8px;padding:16px;margin-bottom:14px}
+label{display:block;font-weight:600;font-size:.9rem;margin:12px 0 4px}
+input[type=text],input[type=file]{width:100%;padding:10px;border:1px solid var(--ln);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+.btn{background:var(--ac);color:var(--acx);border:0;border-radius:6px;padding:12px 16px;font:600 16px system-ui;cursor:pointer;margin-top:16px;width:100%}
+.btn:disabled{opacity:.6}
+ul.tips{margin:0 0 4px;padding-left:20px;color:var(--ink)}
+ul.tips li{margin-bottom:4px}
+.prev{display:none;margin-top:10px;gap:12px;align-items:center}
+.prev img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--ln)}
+.chk{display:flex;gap:10px;align-items:flex-start;margin-top:14px;font-size:.95rem}
+.chk input{margin-top:4px;flex:none}
+.msg{margin-top:14px;padding:12px;border-radius:8px;border:1px solid var(--ln)}
+.msg.ok{border-color:var(--ok)}.msg.er{border-color:var(--wr)}
+.done{list-style:none;margin:8px 0 0;padding:0}
+.done li{padding:4px 0;color:var(--ink)}
+.done li::before{content:"✓ ";color:var(--ok);font-weight:700}
+small{color:var(--mut)}
+</style>
+</head>
+<body>
+<main>
+<h1>Carga de fotos para reconocimiento facial</h1>
+<p id="sub">Verificando el enlace…</p>
+<div class="card" id="codigo" style="display:none">
+<label for="cod" style="margin-top:0">Código o enlace que te envió Jaiseguridad</label>
+<input type="text" id="cod" autocomplete="off" placeholder="Pegá acá el código o el enlace completo">
+<button class="btn" id="cbtn">Continuar</button>
+<p style="margin:10px 0 0;font-size:.9rem">Si todavía no tenés el código, pedíselo a Jaiseguridad.</p>
+<div id="cerr" aria-live="polite"></div>
+</div>
+<div id="app" style="display:none">
+<div class="card">
+<b>Cómo tiene que ser la foto</b>
+<ul class="tips">
+<li>De frente, con la cara completa y mirando a la cámara.</li>
+<li>Con buena luz y sin sombras fuertes sobre el rostro.</li>
+<li>Sin gorra, anteojos oscuros ni barbijo.</li>
+<li>Una sola persona por foto, con fondo liso si es posible.</li>
+</ul>
+<small>La foto se ajusta sola a formato JPG y a menos de 100 KB.</small>
+</div>
+<div class="card">
+<label for="nom">Nombre y apellido de la persona</label><input type="text" id="nom" autocomplete="off">
+<label for="pis">Piso y departamento</label><input type="text" id="pis" autocomplete="off" placeholder="Ej.: 3° B (o PB / Casa)">
+<label for="dir">Dirección del domicilio</label><input type="text" id="dir" autocomplete="off" placeholder="Ej.: Av. Corrientes 1234, CABA">
+<label for="fot">Foto</label><input type="file" id="fot" accept="image/*">
+<div class="prev" id="prev"><img id="pimg" alt="Vista previa de la foto"><span id="pinfo" style="color:var(--mut);font-size:.9rem"></span></div>
+<label class="chk"><input type="checkbox" id="ok"><span>Confirmo que la persona de la foto me autorizó a enviar su imagen para el reconocimiento facial.</span></label>
+<p style="margin:10px 0 0;font-size:.85rem">Usamos esta foto únicamente para dar de alta a la persona en el sistema de control de acceso.</p>
+<button class="btn" id="send">Enviar foto</button>
+<div id="out" aria-live="polite"></div>
+</div>
+<div class="card" id="hist" style="display:none"><b>Fotos enviadas</b><ul class="done" id="lst"></ul></div>
+</div>
+</main>
+<script>
+const sb = supabase.createClient('https://vrgkfaueuszwmocdnylw.supabase.co', 'sb_publishable_F134Y7czJn-F5r1BWR3oRQ_arEXKV2M');
+const $ = i => document.getElementById(i);
+let token = new URLSearchParams(location.search).get('c') || '';
+const LIMITE = 98000; // bytes: queda por debajo de 100 KB (102.400 bytes)
+let foto = null, restantes = 0;
+
+function note(t, cls) { $('out').innerHTML = '<div class="msg ' + (cls || '') + '"></div>'; $('out').firstChild.textContent = t; }
+async function llamar(body) {
+  const { data, error } = await sb.functions.invoke('rostros-cliente', { body: { token, ...body } });
+  let msg = data?.error;
+  if (error && !msg) { try { msg = (await error.context.json()).error; } catch (e) {} }
+  if (msg || error || !data) throw new Error(msg || 'No pudimos completar la operación. Intentá de nuevo.');
+  return data;
+}
+function cargarImg(file) {
+  return new Promise((res, rej) => {
+    const u = URL.createObjectURL(file), i = new Image();
+    i.onload = () => { URL.revokeObjectURL(u); res(i); };
+    i.onerror = () => { URL.revokeObjectURL(u); rej(new Error('img')); };
+    i.src = u;
+  });
+}
+const aBlob = (c, q) => new Promise(r => c.toBlob(r, 'image/jpeg', q));
+async function aJpg100(file) {
+  const img = await cargarImg(file);
+  const w0 = img.naturalWidth, h0 = img.naturalHeight;
+  if (Math.min(w0, h0) < 300) throw new Error('La foto es muy chica. Usá una foto de al menos 300 píxeles de lado para que el reconocimiento funcione bien.');
+  let lado = Math.min(1000, Math.max(w0, h0));
+  for (let paso = 0; paso < 8; paso++) {
+    const k = lado / Math.max(w0, h0);
+    const c = document.createElement('canvas');
+    c.width = Math.round(w0 * k); c.height = Math.round(h0 * k);
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+    for (const q of [0.9, 0.8, 0.7, 0.6, 0.5]) {
+      const b = await aBlob(c, q);
+      if (b && b.size <= LIMITE) return { blob: b, w: c.width, h: c.height };
+    }
+    lado = Math.round(lado * 0.85);
+    if (Math.min(w0, h0) * lado / Math.max(w0, h0) < 240) break;
+  }
+  throw new Error('No pudimos reducir la foto a menos de 100 KB sin perder calidad. Probá con otra foto.');
+}
+const aBase64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(blob); });
+
+$('fot').onchange = async e => {
+  const f = e.target.files[0]; foto = null; $('prev').style.display = 'none'; $('out').innerHTML = '';
+  if (!f) return;
+  try {
+    note('Preparando la foto…');
+    const r = await aJpg100(f);
+    foto = r.blob;
+    $('pimg').src = URL.createObjectURL(r.blob);
+    $('pinfo').textContent = 'Foto lista: JPG de ' + Math.round(r.blob.size / 1024) + ' KB (' + r.w + '×' + r.h + ' px)';
+    $('prev').style.display = 'flex'; $('out').innerHTML = '';
+  } catch (err) {
+    note(err.message === 'img' ? 'No pudimos leer esa foto. Usá una foto en formato JPG o PNG.' : err.message, 'er');
+    e.target.value = '';
+  }
+};
+$('send').onclick = async () => {
+  const nombre = $('nom').value.trim();
+  if (!nombre) return note('Escribí el nombre y apellido de la persona.', 'er');
+  if (!$('pis').value.trim()) return note('Escribí el piso y departamento.', 'er');
+  if (!$('dir').value.trim()) return note('Escribí la dirección del domicilio.', 'er');
+  if (!foto) return note('Elegí una foto.', 'er');
+  if (!$('ok').checked) return note('Tenés que confirmar la autorización de la persona.', 'er');
+  $('send').disabled = true; note('Enviando…');
+  try {
+    const r = await llamar({ accion: 'subir', nombre, piso: $('pis').value, direccion: $('dir').value, consentimiento: true, foto: await aBase64(foto) });
+    restantes = r.restantes;
+    $('hist').style.display = 'block';
+    const li = document.createElement('li'); li.textContent = nombre + ' · ' + $('pis').value.trim(); $('lst').prepend(li);
+    $('nom').value = ''; $('pis').value = ''; $('dir').value = ''; $('fot').value = ''; $('ok').checked = false; foto = null; $('prev').style.display = 'none';
+    note('Recibimos la foto de ' + nombre + '. Podés cargar otra persona.' + (restantes <= 20 ? ' Con este enlace te quedan ' + restantes + ' fotos.' : ''), 'ok');
+  } catch (err) { note(err.message, 'er'); }
+  $('send').disabled = false;
+};
+async function iniciar() {
+  try {
+    const r = await llamar({ accion: 'validar' });
+    restantes = r.restantes;
+    $('codigo').style.display = 'none';
+    $('sub').textContent = 'Enlace para: ' + r.cliente + '. Subí una foto por cada persona.';
+    $('app').style.display = 'block';
+    return true;
+  } catch (err) { $('sub').textContent = err.message; return false; }
+}
+function pedirCodigo(msg) {
+  $('sub').textContent = msg || 'Ingresá el código que te envió Jaiseguridad para cargar las fotos.';
+  $('codigo').style.display = 'block';
+}
+$('cbtn').onclick = async () => {
+  const m = $('cod').value.toLowerCase().match(/[0-9a-f]{32}/);
+  $('cerr').innerHTML = '';
+  if (!m) { $('cerr').innerHTML = '<div class="msg er"></div>'; $('cerr').firstChild.textContent = 'El código no es válido. Copialo completo, tal como te lo enviamos.'; return; }
+  token = m[0]; $('cbtn').disabled = true;
+  if (!(await iniciar())) { pedirCodigo('Ese código no es válido o venció. Pedile uno nuevo a Jaiseguridad.'); }
+  $('cbtn').disabled = false;
+};
+if (token) { iniciar().then(ok => { if (!ok) $('codigo').style.display = 'block'; }); } else { pedirCodigo(); }
+</script>
+</body>
+</html>

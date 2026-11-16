@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel de servicio técnico</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+:root{--bg:#EEF1F2;--sf:#fff;--ink:#14202B;--mut:#5B6B77;--ln:#D2DADF;--ac:#0F7C7E;--acx:#fff;--wr:#B7660B}
+@media (prefers-color-scheme:dark){:root{--bg:#0E161D;--sf:#17222B;--ink:#E7EDF0;--mut:#93A3AE;--ln:#2A3A46;--ac:#3DB8BA;--acx:#0E161D;--wr:#E8A33D}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+main{max-width:900px;margin:auto;padding:16px}
+h1{font-size:1.4rem;margin:8px 0}h2{font-size:1.1rem;margin:0 0 10px}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:8px;padding:16px;margin-bottom:14px}
+input,select,textarea{width:100%;padding:9px;border:1px solid var(--ln);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;margin:4px 0}
+.btn{background:var(--ac);color:var(--acx);border:0;border-radius:6px;padding:10px 14px;font:600 15px system-ui;cursor:pointer;text-decoration:none;display:inline-block}
+.alt{background:none;color:var(--ac);border:1px solid var(--ac);padding:5px 9px;font-size:.85rem}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--ln);margin-bottom:14px;overflow-x:auto}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 12px;font:600 15px system-ui;color:var(--mut);cursor:pointer}
+nav button.on{color:var(--ink);border-color:var(--ac)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.req{border-top:1px solid var(--ln);padding:12px 0}.req:first-of-type{border-top:0}
+.mut{color:var(--mut);font-size:.9rem}.urg{color:var(--wr);font-weight:600}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.stats div{background:var(--sf);border:1px solid var(--ln);border-radius:8px;padding:12px}
+.stats b{display:block;font-size:1.6rem}
+select.in{width:auto}
+#login{max-width:360px;margin:60px auto}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+<div id="login" class="card">
+<h1>Panel de servicio técnico</h1>
+<input id="em" type="email" placeholder="Email" autocomplete="username">
+<input id="pw" type="password" placeholder="Contraseña" autocomplete="current-password">
+<button class="btn" id="go">Ingresar</button>
+<p class="mut" id="err"></p>
+</div>
+
+<div id="app" class="hide">
+<div class="row"><h1>Panel de servicio técnico</h1><button class="btn alt" id="out">Salir</button></div>
+<nav id="nav"><button data-t="sol" class="on">Solicitudes</button><button data-t="tec">Técnicos</button><button data-t="cot" id="tabcot">Cotizaciones</button><button data-t="ros" id="tabros">Rostros</button><button data-t="cam">Cámaras</button><button data-t="faq">Preguntas del bot</button></nav>
+
+<section id="sol">
+<div class="stats"><div><b id="s1">0</b><span class="mut">Pendientes</span></div><div><b id="s2">0</b><span class="mut">Agendadas</span></div><div><b id="s3">0</b><span class="mut">Completadas</span></div></div>
+<div class="card"><h2>Solicitudes</h2><input id="q" placeholder="Buscar por ticket, nombre o teléfono" aria-label="Buscar"><div id="lista"></div></div>
+</section>
+
+<section id="tec" class="hide"><div class="card"><h2>Agenda por técnico</h2><div class="cols" id="cols"></div>
+<p class="mut">Cambia el nombre, agrega el correo de Google del técnico y se guarda al salir del campo.</p></div></section>
+
+<section id="cot" class="hide"><div class="card"><h2>Pedidos de cotización</h2><div id="cotlist"></div></div></section>
+
+<section id="ros" class="hide">
+<div class="card"><h2>Enlaces para cargar fotos de reconocimiento facial</h2>
+<p class="mut">Creá un enlace por cliente y enviáselo. Solo acepta fotos JPG de menos de 100 KB. Las fotos son privadas: solo las ves desde acá.</p>
+<input id="fcli" placeholder="Nombre del cliente o empresa">
+<div class="row"><span class="mut">Vigencia (días)</span><input id="fdias" type="number" min="1" max="365" value="30" style="width:90px" aria-label="Días de vigencia"></div>
+<button class="btn" id="fnew" style="margin-top:8px">Crear enlace</button>
+<div id="fl" style="margin-top:10px"></div></div>
+<div class="card"><h2>Fotos recibidas</h2><div id="fp"></div></div>
+</section>
+
+<section id="cam" class="hide">
+<div class="card"><h2>Cámaras en vivo por cliente</h2>
+<p class="mut">Cargá el correo del cliente y sus cámaras (número de serie en DoLynk). El cliente crea su cuenta en el portal con ese mismo correo y ve solo las suyas. Recordá poner el video en H.264.</p>
+<input id="ccli" placeholder="Nombre del cliente o empresa">
+<input id="cmail" type="email" placeholder="Correo del cliente (con el que va a crear su cuenta)">
+<div class="row"><span class="mut">Vigencia (días, vacío = sin vencimiento)</span><input id="cdias" type="number" min="1" max="3650" style="width:90px" aria-label="Días de vigencia"></div>
+<button class="btn" id="cnew" style="margin-top:8px">Crear cliente</button></div>
+<div id="cl"></div>
+</section>
+
+<section id="faq" class="hide">
+<div class="card"><h2>Preguntas frecuentes</h2><div id="faqs"></div></div>
+<div class="card"><h2>Agregar respuesta</h2>
+<input id="fk" placeholder="Palabras clave separadas por coma"><textarea id="fa" placeholder="Respuesta"></textarea>
+<button class="btn" id="addf">Agregar</button></div>
+</section>
+</div>
+</main>
+<script>
+// === CONFIGURACIÓN: pega aquí tus dos datos de Supabase (Project Settings > API) ===
+const SUPABASE_URL = 'https://vrgkfaueuszwmocdnylw.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_F134Y7czJn-F5r1BWR3oRQ_arEXKV2M';  // nunca la clave secret / service_role
+// ==================================================================================
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = i => document.getElementById(i);
+const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const norm = t => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+const ST = {pendiente:'Pendiente', agendada:'Agendada', en_camino:'En camino', completada:'Completada', cancelada:'Cancelada'};
+let T = [], R = [], F = [], Q = [], PU = {}, AU = {}, FL = [], FP = [], FU = {}, CC = [], CD = [];
+
+async function start() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return;
+  const { data: adm, error: e } = await sb.from('admins').select('user_id').maybeSingle();
+  if (e) { $('err').textContent = 'Error de base de datos: ' + e.message + ' (código ' + e.code + ')'; return; }
+  if (!adm) { $('err').textContent = 'Ingresaste como ' + session.user.email + ' (id ' + session.user.id + '), que no está en la tabla de administradores.'; await sb.auth.signOut(); return; }
+  $('login').classList.add('hide'); $('app').classList.remove('hide');
+  await load();
+}
+async function load() {
+  const [t, r, f] = await Promise.all([
+    sb.from('technicians').select('*').eq('active', true).order('name'),
+    sb.from('service_requests').select('*, customers(name, phone)').order('scheduled_date').order('scheduled_time'),
+    sb.from('faqs').select('*').order('created_at')]);
+  T = t.data || []; R = r.data || []; F = f.data || [];
+  const adjs = R.flatMap(x => x.attachments || []);
+  AU = {};
+  if (adjs.length) {
+    const { data: au } = await sb.storage.from('solicitudes').createSignedUrls(adjs, 3600);
+    (au || []).forEach(u => { if (u.signedUrl) AU[u.path] = u.signedUrl; });
+  }
+  const qq = await sb.from('quotes').select('*').order('created_at', { ascending: false });
+  Q = qq.data || [];
+  const [fl, fp] = await Promise.all([
+    sb.from('face_links').select('*').order('created_at', { ascending: false }),
+    sb.from('face_photos').select('*').order('created_at', { ascending: false })]);
+  FL = fl.data || []; FP = fp.data || []; FU = {};
+  if (FP.length) {
+    const { data: fu } = await sb.storage.from('rostros').createSignedUrls(FP.map(p => p.storage_path), 3600);
+    (fu || []).forEach(x => { if (x.signedUrl) FU[x.path] = x.signedUrl; });
+  }
+  const [cc, cd] = await Promise.all([
+    sb.from('camera_clients').select('*').order('created_at', { ascending: false }),
+    sb.from('camera_devices').select('*').order('name')]);
+  CC = cc.data || []; CD = cd.data || [];
+  const rutas = Q.flatMap(x => x.photos || []);
+  PU = {};
+  if (rutas.length) {
+    const { data: urls } = await sb.storage.from('cotizaciones').createSignedUrls(rutas, 3600);
+    (urls || []).forEach(u => { if (u.signedUrl) PU[u.path] = u.signedUrl; });
+  }
+  draw();
+}
+$('go').onclick = async () => {
+  const { error } = await sb.auth.signInWithPassword({ email: $('em').value.trim(), password: $('pw').value });
+  if (error) { $('err').textContent = 'No se pudo ingresar: ' + error.message; return; }
+  $('err').textContent = ''; start();
+};
+$('out').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+
+const fh = t => t.slice(0, 5).replace(/^0/, '');
+const rango = r => r.scheduled_end ? fh(r.scheduled_time) + ' a ' + fh(r.scheduled_end) : (parseInt(r.scheduled_time) < 13 ? '9:00 a 13:00' : '14:00 a 17:00');
+function wa(r, k) {
+  const c = r.customers, tn = T.find(x => x.id === r.technician_id)?.name || '';
+  const m = k === 'a'
+    ? `Hola ${c.name}, tu visita técnica #${r.ticket_number} (${r.service_type}) está confirmada para el ${r.scheduled_date}, en el horario de ${rango(r)}. Te atenderá ${tn}.`
+    : `Hola ${c.name}, ${tn} va en camino a ${r.address} (ticket #${r.ticket_number}). Llegará en breve.`;
+  return 'https://wa.me/' + c.phone.replace(/\D/g, '') + '?text=' + encodeURIComponent(m);
+}
+const att = r => {
+  const h = (r.attachments || []).map((p, i) => !AU[p] ? '' : /\.jpg$/.test(p)
+    ? `<a href="${AU[p]}" target="_blank" rel="noopener"><img src="${AU[p]}" alt="Foto ${i + 1}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--ln)"></a>`
+    : `<a class="btn alt" target="_blank" rel="noopener" href="${AU[p]}">Ver video</a>`).join(' ');
+  return h ? `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0">${h}</div>` : '';
+};
+const FST = { recibida: 'Recibida', cargada: 'Cargada en Dahua', rechazada: 'Rechazada' };
+function portalBase() {
+  let u = ''; try { u = localStorage.getItem('portal_url') || ''; } catch (e) {}
+  if (!u) {
+    u = (prompt('Pegá la dirección de tu portal, por ejemplo https://tu-portal.netlify.app') || '').trim().replace(/\/+$/, '');
+    if (u) { try { localStorage.setItem('portal_url', u); } catch (e) {} }
+  }
+  return u;
+}
+function fLink(l) { const b = portalBase(); return b ? b + '/rostros.html?c=' + l.token : ''; }
+function fName(p) {
+  const base = norm(p.person_name).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'persona';
+  return base + '.jpg';
+}
+async function fDownload(url, name) {
+  const b = await (await fetch(url)).blob();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function drawFaces() {
+  const nuevas = FP.filter(p => p.status === 'recibida').length;
+  $('tabros').textContent = 'Rostros' + (nuevas ? ' (' + nuevas + ' nuevas)' : '');
+  $('fl').innerHTML = FL.length ? FL.map(l => {
+    const n = FP.filter(p => p.link_id === l.id).length, vence = new Date(l.expires_at), vencido = vence < new Date();
+    return `<div class="req"><div class="row"><b>${esc(l.client_name)}</b><span class="${l.active && !vencido ? 'mut' : 'urg'}">${!l.active ? 'Desactivado' : vencido ? 'Vencido' : 'Vence el ' + vence.toLocaleDateString('es-AR')}</span></div>
+<div class="mut">${n} de ${l.max_photos} fotos</div>
+<div class="row" style="margin-top:8px"><span><button class="btn alt" data-fcopy="${l.id}">Copiar enlace</button> <button class="btn alt" data-fwa="${l.id}">WhatsApp</button></span>
+<span><button class="btn alt" data-ftog="${l.id}">${l.active ? 'Desactivar' : 'Activar'}</button> ${n ? `<button class="btn alt" data-fzip="${l.id}">Descargar ZIP</button>` : ''}</span></div></div>`;
+  }).join('') : '<p class="mut">Todavía no creaste ningún enlace.</p>';
+  $('fp').innerHTML = FP.length ? FP.map(p => {
+    const l = FL.find(x => x.id === p.link_id), d = new Date(p.created_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+    return `<div class="req"><div class="row"><span style="display:flex;gap:10px;align-items:center">${FU[p.storage_path] ? `<img src="${FU[p.storage_path]}" alt="Foto de ${esc(p.person_name)}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--ln)">` : ''}<span><b>${esc(p.person_name)}</b>${p.floor_apt ? ' · ' + esc(p.floor_apt) : ''}<br><span class="mut">${p.address ? esc(p.address) + '<br>' : ''}${esc(l?.client_name || '')} · ${d} · ${Math.round(p.size_bytes / 1024)} KB</span></span></span></div>
+<div class="row" style="margin-top:8px"><select class="in" data-fst="${p.id}" aria-label="Estado">${Object.entries(FST).map(([k, v]) => `<option value="${k}" ${k === p.status ? 'selected' : ''}>${v}</option>`).join('')}</select>
+<span><button class="btn alt" data-fdl="${p.id}">Descargar</button> <button class="btn alt" data-fdel="${p.id}">Borrar</button></span></div></div>`;
+  }).join('') : '<p class="mut">Todavía no llegó ninguna foto.</p>';
+}
+const QST = { nueva: 'Nueva', contactado: 'Contactado', cotizada: 'Cotizada', ganada: 'Ganada', perdida: 'Perdida' };
+function drawQuotes() {
+  const nuevas = Q.filter(x => x.status === 'nueva').length;
+  $('tabcot').textContent = 'Cotizaciones' + (nuevas ? ' (' + nuevas + ' nuevas)' : '');
+  $('cotlist').innerHTML = Q.length ? Q.map(x => {
+    const d = new Date(x.created_at).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' });
+    const fo = (x.photos || []).map((p, i) => PU[p] ? `<a href="${PU[p]}" target="_blank" rel="noopener"><img src="${PU[p]}" alt="Foto ${i + 1}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:1px solid var(--ln)"></a>` : '').join(' ');
+    const wam = encodeURIComponent('Hola ' + x.name + ', te escribimos de Jaiseguridad por tu pedido de cotización C-' + x.quote_number + '.');
+    return `<div class="req"><div class="row"><b>C-${x.quote_number} · ${esc(x.name)} · ${esc(x.service_type)}</b><span class="mut">${d}</span></div>
+<div class="mut">${esc(x.property_type)} · ${esc(x.address)}<br>${esc(x.phone)} · ${esc(x.email)}</div>
+<div style="margin:6px 0">${esc(x.description)}</div>
+${fo ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0">${fo}</div>` : ''}
+<div class="row" style="margin-top:8px"><select class="in" data-qst="${x.id}" aria-label="Estado">${Object.entries(QST).map(([k, v]) => `<option value="${k}" ${k === x.status ? 'selected' : ''}>${v}</option>`).join('')}</select>
+<span><a class="btn alt" target="_blank" rel="noopener" href="https://wa.me/${x.phone.replace(/\D/g, '')}?text=${wam}">WhatsApp</a> <a class="btn alt" href="mailto:${esc(x.email)}?subject=${encodeURIComponent('Tu cotización C-' + x.quote_number)}">Mail</a></span></div></div>`;
+  }).join('') : '<p class="mut">Todavía no hay pedidos de cotización.</p>';
+}
+function drawCams() {
+  $('cl').innerHTML = CC.length ? CC.map(c => {
+    const ds = CD.filter(d => d.client_id === c.id), vence = c.expires_at ? new Date(c.expires_at) : null, vencido = vence && vence < new Date();
+    return `<div class="card"><div class="row"><b>${esc(c.client_name)}</b><span class="${c.active && !vencido ? 'mut' : 'urg'}">${!c.active ? 'Desactivado' : vencido ? 'Vencido' : vence ? 'Vence el ' + vence.toLocaleDateString('es-AR') : 'Sin vencimiento'}</span></div>
+<input data-cemail="${c.id}" type="email" value="${esc(c.email || '')}" placeholder="Correo del cliente" aria-label="Correo del cliente">
+${ds.map(d => `<div class="row req"><span>${esc(d.name)} <span class="mut">· ${esc(d.device_id)} · canal ${d.channel_id}</span></span><button class="btn alt" data-cdel="${d.id}">Quitar</button></div>`).join('') || '<p class="mut">Sin cámaras cargadas.</p>'}
+<div class="cols" style="margin-top:8px"><input data-cn="${c.id}" placeholder="Nombre (ej.: Entrada)" aria-label="Nombre de la cámara"><input data-cs="${c.id}" placeholder="Número de serie (SN)" aria-label="Número de serie"><input data-cc="${c.id}" type="number" min="0" value="0" aria-label="Canal"></div>
+<div class="row" style="margin-top:8px"><span><button class="btn alt" data-cadd="${c.id}">Agregar cámara</button></span>
+<span><button class="btn alt" data-ccopy="${c.id}">Copiar enlace</button> <button class="btn alt" data-cwa="${c.id}">WhatsApp</button> <button class="btn alt" data-ctog="${c.id}">${c.active ? 'Desactivar' : 'Activar'}</button></span></div></div>`;
+  }).join('') : '<p class="mut">Todavía no creaste ningún enlace de cámaras.</p>';
+}
+function draw() {
+  drawQuotes();
+  drawFaces();
+  drawCams();
+  const n = s => R.filter(r => r.status === s).length;
+  $('s1').textContent = n('pendiente'); $('s2').textContent = n('agendada') + n('en_camino'); $('s3').textContent = n('completada');
+  const q = norm($('q').value || '');
+  const L = R.filter(r => !q || norm('#' + r.ticket_number + ' ' + (r.customers?.name || '') + ' ' + (r.customers?.phone || '')).includes(q));
+  $('lista').innerHTML = L.length ? L.map(r => `<div class="req"><div class="row"><b>#${r.ticket_number} · ${esc(r.customers?.name)} · ${esc(r.service_type)}</b>
+<span class="${r.urgency === 'Urgente' ? 'urg' : 'mut'}">${r.urgency}</span></div>
+<div class="mut">${r.scheduled_date} · ${rango(r)} · ${esc(r.address)}<br>${esc(r.customers?.phone)}${r.description ? ' · ' + esc(r.description) : ''}</div>
+${att(r)}
+<div class="row" style="margin-top:8px"><span>
+<select class="in" data-tec="${r.id}" aria-label="Técnico"><option value="">Sin asignar</option>${T.map(t => `<option value="${t.id}" ${t.id === r.technician_id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+<select class="in" data-st="${r.id}" aria-label="Estado">${Object.entries(ST).map(([k, v]) => `<option value="${k}" ${k === r.status ? 'selected' : ''}>${v}</option>`).join('')}</select></span>
+<span>${r.technician_id ? `<a class="btn alt" target="_blank" rel="noopener" href="${wa(r, 'a')}">Avisar asignación</a> <a class="btn alt" target="_blank" rel="noopener" href="${wa(r, 'c')}">Va en camino</a>` : ''}</span></div></div>`).join('')
+    : '<p class="mut">Todavía no hay solicitudes.</p>';
+  $('cols').innerHTML = T.map(t => {
+    const v = R.filter(r => r.technician_id === t.id && !['completada', 'cancelada'].includes(r.status));
+    return `<div><input data-name="${t.id}" value="${esc(t.name)}" aria-label="Nombre"><input data-mail="${t.id}" value="${esc(t.email)}" placeholder="Correo de Google" aria-label="Correo">
+<div class="mut">${v.length ? v.map(r => r.scheduled_date.slice(5) + ' ' + rango(r) + ' · ' + esc(r.customers?.name)).join('<br>') : 'Libre'}</div></div>`;
+  }).join('');
+  $('faqs').innerHTML = F.map(f => `<div class="req"><div class="row"><span class="mut">${esc(f.keywords.join(', '))}</span><button class="btn alt" data-del="${f.id}">Quitar</button></div>${esc(f.answer)}</div>`).join('');
+}
+$('lista').onchange = async e => {
+  const t = e.target, id = t.dataset.tec || t.dataset.st; if (!id) return;
+  const patch = t.dataset.tec ? { technician_id: t.value || null } : { status: t.value };
+  const { error } = await sb.from('service_requests').update(patch).eq('id', id);
+  if (error) alert(error.code === '23505' ? 'Ese técnico ya tiene una visita a esa hora.' : 'No se pudo guardar: ' + error.message);
+  else if (t.dataset.tec || t.value === 'cancelada') {
+    const { data: d, error: fe } = await sb.functions.invoke('agendar-visita', { body: { request_id: id } });
+    let m = d?.error;
+    if (fe && !m) { try { m = (await fe.context.json()).error; } catch (x) {} }
+    if (m || fe) alert('La visita se guardó, pero no se pudo actualizar Google Calendar: ' + (m || fe.message));
+  }
+  load();
+};
+$('cols').onchange = async e => {
+  const t = e.target, id = t.dataset.name || t.dataset.mail; if (!id) return;
+  const patch = t.dataset.name ? { name: t.value.trim() || 'Técnico' } : { email: t.value.trim() || null };
+  await sb.from('technicians').update(patch).eq('id', id); load();
+};
+$('addf').onclick = async () => {
+  const k = $('fk').value.split(',').map(norm).filter(Boolean), a = $('fa').value.trim();
+  if (!k.length || !a) return;
+  await sb.from('faqs').insert({ keywords: k, answer: a }); $('fk').value = $('fa').value = ''; load();
+};
+$('faqs').onclick = async e => {
+  const id = e.target.dataset.del; if (!id) return;
+  await sb.from('faqs').delete().eq('id', id); load();
+};
+$('q').oninput = draw;
+$('cotlist').onchange = async e => {
+  const id = e.target.dataset.qst; if (!id) return;
+  const { error } = await sb.from('quotes').update({ status: e.target.value }).eq('id', id);
+  if (error) alert('No se pudo guardar: ' + error.message);
+  load();
+};
+$('fnew').onclick = async () => {
+  const nombre = $('fcli').value.trim(); if (!nombre) return alert('Escribí el nombre del cliente.');
+  const dias = Math.max(1, Math.min(365, parseInt($('fdias').value, 10) || 30));
+  const { error } = await sb.from('face_links').insert({ client_name: nombre, expires_at: new Date(Date.now() + dias * 864e5).toISOString() });
+  if (error) return alert('No se pudo crear: ' + error.message);
+  $('fcli').value = ''; load();
+};
+$('ros').onclick = async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const d = b.dataset;
+  if (d.fcopy || d.fwa) {
+    const l = FL.find(x => x.id === (d.fcopy || d.fwa)); const url = l && fLink(l); if (!url) return;
+    if (d.fwa) return window.open('https://wa.me/?text=' + encodeURIComponent('Hola, este es el enlace para cargar las fotos del reconocimiento facial (JPG, menos de 100 KB): ' + url), '_blank', 'noopener');
+    try { await navigator.clipboard.writeText(url); b.textContent = 'Copiado'; setTimeout(() => b.textContent = 'Copiar enlace', 2000); }
+    catch (x) { prompt('Copiá el enlace:', url); }
+  } else if (d.ftog) {
+    const l = FL.find(x => x.id === d.ftog);
+    await sb.from('face_links').update({ active: !l.active }).eq('id', l.id); load();
+  } else if (d.fzip) {
+    const l = FL.find(x => x.id === d.fzip), z = new JSZip(), usados = {};
+    b.disabled = true; b.textContent = 'Preparando…';
+    try {
+      for (const p of FP.filter(x => x.link_id === l.id)) {
+        if (!FU[p.storage_path]) continue;
+        let n = fName(p); if (usados[n]) { usados[n]++; n = n.replace('.jpg', '_' + usados[n] + '.jpg'); } else usados[n] = 1;
+        z.file(n, await (await fetch(FU[p.storage_path])).blob());
+      }
+      const q = t => '"' + String(t ?? '').replace(/"/g, '""') + '"';
+      const filas = FP.filter(x => x.link_id === l.id).map(p => [fName(p), p.person_name, p.floor_apt, p.address].map(q).join(';'));
+      z.file('datos.csv', '\ufeff' + ['archivo;nombre y apellido;piso y departamento;direccion'].concat(filas).join('\r\n'));
+      const blob = await z.generateAsync({ type: 'blob' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'rostros_' + (norm(l.client_name).replace(/[^a-z0-9]+/g, '_') || 'cliente') + '.zip'; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch (x) { alert('No se pudo armar el ZIP: ' + x.message); }
+    b.disabled = false; b.textContent = 'Descargar ZIP';
+  } else if (d.fdl) {
+    const p = FP.find(x => x.id === d.fdl); if (p && FU[p.storage_path]) fDownload(FU[p.storage_path], fName(p));
+  } else if (d.fdel) {
+    const p = FP.find(x => x.id === d.fdel); if (!p || !confirm('¿Borrar la foto de ' + p.person_name + '? No se puede deshacer.')) return;
+    await sb.storage.from('rostros').remove([p.storage_path]);
+    await sb.from('face_photos').delete().eq('id', p.id); load();
+  }
+};
+$('ros').onchange = async e => {
+  const id = e.target.dataset.fst; if (!id) return;
+  await sb.from('face_photos').update({ status: e.target.value }).eq('id', id); load();
+};
+$('cnew').onclick = async () => {
+  const nombre = $('ccli').value.trim(); if (!nombre) return alert('Escribí el nombre del cliente.');
+  const dias = parseInt($('cdias').value, 10), mail = $('cmail').value.trim().toLowerCase();
+  const { error } = await sb.from('camera_clients').insert({ client_name: nombre, email: mail || null, expires_at: dias > 0 ? new Date(Date.now() + dias * 864e5).toISOString() : null });
+  if (error) return alert('No se pudo crear: ' + error.message);
+  $('ccli').value = ''; $('cmail').value = ''; $('cdias').value = ''; load();
+};
+$('cam').onclick = async e => {
+  const b = e.target.closest('button'); if (!b || b.id === 'cnew') return;
+  const d = b.dataset, card = b.closest('.card');
+  if (d.cadd) {
+    const n = card.querySelector('[data-cn]').value.trim(), s = card.querySelector('[data-cs]').value.trim().toUpperCase(), ch = parseInt(card.querySelector('[data-cc]').value, 10) || 0;
+    if (!n || !s) return alert('Completá el nombre y el número de serie.');
+    const { error } = await sb.from('camera_devices').insert({ client_id: d.cadd, name: n, device_id: s, channel_id: ch });
+    if (error) return alert('No se pudo agregar: ' + error.message);
+    load();
+  } else if (d.cdel) {
+    if (!confirm('¿Quitar esta cámara del cliente?')) return;
+    await sb.from('camera_devices').delete().eq('id', d.cdel); load();
+  } else if (d.ctog) {
+    const c = CC.find(x => x.id === d.ctog); await sb.from('camera_clients').update({ active: !c.active }).eq('id', c.id); load();
+  } else if (d.ccopy || d.cwa) {
+    const c = CC.find(x => x.id === (d.ccopy || d.cwa)), base = portalBase(); if (!c || !base) return;
+    const url = base + '/camaras.html?c=' + c.token;
+    if (d.cwa) return window.open('https://wa.me/?text=' + encodeURIComponent('Hola, este es el enlace para ver tus cámaras en vivo: ' + url), '_blank', 'noopener');
+    try { await navigator.clipboard.writeText(url); b.textContent = 'Copiado'; setTimeout(() => b.textContent = 'Copiar enlace', 2000); }
+    catch (x) { prompt('Copiá el enlace:', url); }
+  }
+};
+$('cam').onchange = async e => {
+  const id = e.target.dataset.cemail; if (!id) return;
+  const { error } = await sb.from('camera_clients').update({ email: e.target.value.trim().toLowerCase() || null }).eq('id', id);
+  if (error) alert(error.code === '23505' ? 'Ese correo ya está asignado a otro cliente.' : 'No se pudo guardar: ' + error.message);
+  load();
+};
+$('nav').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  ['sol', 'tec', 'cot', 'ros', 'cam', 'faq'].forEach(s => $(s).classList.toggle('hide', s !== b.dataset.t));
+};
+start();
+</script>
+</body>
+</html>

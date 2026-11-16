@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Ver mis cámaras en vivo</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+<style>
+:root{--bg:#EEF1F2;--sf:#fff;--ink:#14202B;--mut:#5B6B77;--ln:#D2DADF;--ac:#0F7C7E;--acx:#fff;--wr:#B7660B}
+@media (prefers-color-scheme:dark){:root{--bg:#0E161D;--sf:#17222B;--ink:#E7EDF0;--mut:#93A3AE;--ln:#2A3A46;--ac:#3DB8BA;--acx:#0E161D;--wr:#E8A33D}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,sans-serif}
+main{max-width:720px;margin:auto;padding:16px}
+h1{font-size:1.4rem;margin:12px 0 4px}
+h2{font-size:1.05rem;margin:0 0 8px}
+p{margin:0 0 12px;color:var(--mut)}
+a{color:var(--ac)}
+.card{background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:16px;margin-bottom:14px}
+.card p{color:var(--ink)}
+input[type=text]{width:100%;padding:10px;border:1px solid var(--ln);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+.btn{display:block;width:100%;text-align:center;background:var(--ac);color:var(--acx);text-decoration:none;border:0;border-radius:8px;padding:12px 16px;font:600 16px system-ui;cursor:pointer;margin-top:10px}
+.btn.alt{background:transparent;color:var(--ac);border:2px solid var(--ac)}
+.btn.sel{outline:3px solid var(--ink);outline-offset:2px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cams{display:flex;flex-wrap:wrap;gap:8px}
+.cams .btn{width:auto;flex:1 1 140px;margin-top:0}
+video{width:100%;background:#000;border-radius:8px;display:block}
+.msg{margin-top:12px;padding:12px;border-radius:8px;border:1px solid var(--wr)}
+details{background:var(--sf);border:1px solid var(--ln);border-radius:10px;margin-bottom:14px}
+summary{cursor:pointer;padding:14px 16px;font-weight:700}
+.body{padding:0 16px 16px}
+.body ol{margin:0 0 8px;padding-left:22px}
+.body li{margin-bottom:6px}
+.tip{border-left:3px solid var(--ac);padding:2px 0 2px 12px;color:var(--mut);margin:12px 0 0;font-size:.95rem}
+.warn{border-left:3px solid var(--wr);padding:2px 0 2px 12px;margin:12px 0 0;font-size:.95rem}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Ver mis cámaras en vivo</h1>
+<p id="sub">Verificando el enlace…</p>
+
+<div class="card hide" id="acceso">
+<label for="em" style="font-weight:600;font-size:.9rem">Correo</label>
+<input type="text" id="em" inputmode="email" autocomplete="username" placeholder="tu@correo.com">
+<label for="pw" style="font-weight:600;font-size:.9rem;display:block;margin-top:10px">Contraseña</label>
+<input type="password" id="pw" autocomplete="current-password" placeholder="Mínimo 8 caracteres">
+<button class="btn" id="ing">Ingresar</button>
+<button class="btn alt" id="reg">Crear mi cuenta</button>
+<p style="margin:10px 0 0;font-size:.9rem"><a href="#" id="olv">Olvidé mi contraseña</a></p>
+<p style="margin:6px 0 0;font-size:.9rem">Usá el mismo correo que nos diste al contratar el servicio. Si todavía no lo cargamos, escribinos.</p>
+<div id="aerr" aria-live="polite"></div>
+</div>
+
+<div class="card hide" id="nueva">
+<h2>Elegí tu nueva contraseña</h2>
+<input type="password" id="np" autocomplete="new-password" placeholder="Mínimo 8 caracteres">
+<button class="btn" id="npb">Guardar contraseña</button>
+<div id="nerr" aria-live="polite"></div>
+</div>
+
+<div id="visor" class="hide">
+<div class="card">
+<h2>Elegí una cámara</h2>
+<div class="cams" id="cams"></div>
+<div style="margin-top:14px"><video id="v" controls autoplay muted playsinline></video></div>
+<div id="out" aria-live="polite"></div>
+<button class="btn alt hide" id="again">Volver a cargar</button>
+</div>
+<button class="btn alt hide" id="salir">Cerrar sesión</button>
+</div>
+
+<details>
+<summary>Ver mis cámaras desde el celular (app DMSS)</summary>
+<div class="body">
+<div class="row">
+<a class="btn" href="https://play.google.com/store/apps/details?id=com.mm.android.DMSS" target="_blank" rel="noopener">Android</a>
+<a class="btn" href="https://apps.apple.com/app/id1198071784" target="_blank" rel="noopener">iPhone</a>
+</div>
+<ol style="margin-top:14px">
+<li>Instalá DMSS (de Dahua Technology) e iniciá sesión o creá tu cuenta.</li>
+<li>Tocá <b>+</b> y escaneá el código QR del grabador o cámara, o escribí el número de serie.</li>
+<li>Poné la contraseña del equipo y tocá la imagen para ver en vivo.</li>
+</ol>
+<p class="warn">Nunca compartas la contraseña de tu equipo ni el código QR. Nosotros no te la vamos a pedir por mensaje.</p>
+<p class="tip">¿Querés que dejemos todo listo nosotros? <a href="solicitar.html">Pedí una visita técnica</a>.</p>
+</div>
+</details>
+
+<p><a href="guias.html">Guías de ayuda para mis cámaras</a> · <a href="index.html">← Volver al inicio</a></p>
+</main>
+<script>
+const sb = supabase.createClient('https://vrgkfaueuszwmocdnylw.supabase.co', 'sb_publishable_F134Y7czJn-F5r1BWR3oRQ_arEXKV2M');
+const $ = i => document.getElementById(i);
+let token = new URLSearchParams(location.search).get('c') || '', actual = null, hls = null;
+
+function note(t) { $('out').innerHTML = t ? '<div class="msg"></div>' : ''; if (t) $('out').firstChild.textContent = t; }
+async function llamar(body) {
+  const { data, error } = await sb.functions.invoke('camaras-en-vivo', { body: token ? { token, ...body } : body });
+  let msg = data?.error, ses = data?.sesion;
+  if (error && !msg) { try { const j = await error.context.json(); msg = j.error; ses = j.sesion; } catch (e) {} }
+  if (msg || error || !data) throw Object.assign(new Error(msg || 'No pudimos completar la operación. Intentá de nuevo.'), { sesion: ses });
+  return data;
+}
+function parar() { if (hls) { hls.destroy(); hls = null; } const v = $('v'); v.removeAttribute('src'); v.load(); }
+async function ver(id, reintento) {
+  actual = id; note('Conectando con la cámara…'); $('again').classList.add('hide'); parar();
+  document.querySelectorAll('#cams .btn').forEach(b => b.classList.toggle('sel', b.dataset.id === id));
+  try {
+    const r = await llamar({ accion: 'ver', camara: id });
+    const v = $('v');
+    if (window.Hls && Hls.isSupported()) {
+      hls = new Hls({ lowLatencyMode: true });
+      hls.on(Hls.Events.MANIFEST_PARSED, () => { note(''); v.play().catch(() => {}); });
+      hls.on(Hls.Events.ERROR, (_e, d) => {
+        if (!d.fatal) return;
+        if (d.details === 'fragParsingError' || d.details === 'bufferAddCodecError') {
+          note('No se puede mostrar el video de esta cámara en el navegador (formato de video no compatible). Avisanos y lo ajustamos.');
+        } else if (!reintento) { ver(id, true); return; }
+        else note('Se cortó la transmisión. Tocá "Volver a cargar".');
+        $('again').classList.remove('hide'); parar();
+      });
+      hls.loadSource(r.url); hls.attachMedia(v);
+    } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+      v.src = r.url; v.onloadeddata = () => note(''); v.play().catch(() => {});
+    } else { note('Este navegador no puede reproducir video en vivo. Probá con Chrome o Safari.'); }
+  } catch (e) { note(e.message); $('again').classList.remove('hide'); }
+}
+$('again').onclick = () => actual && ver(actual);
+function aviso(id, t) { $(id).innerHTML = t ? '<div class="msg"></div>' : ''; if (t) $(id).firstChild.textContent = t; }
+async function iniciar() {
+  try {
+    const r = await llamar({ accion: 'lista' });
+    $('acceso').classList.add('hide'); $('nueva').classList.add('hide');
+    $('sub').textContent = 'Cámaras de ' + r.cliente + '.';
+    $('visor').classList.remove('hide');
+    $('salir').classList.toggle('hide', !!token);
+    $('cams').innerHTML = '';
+    if (!r.camaras.length) { $('cams').textContent = 'Todavía no hay cámaras cargadas para tu cuenta. Pedile a Jaiseguridad que las active.'; return; }
+    r.camaras.forEach(c => {
+      const b = document.createElement('button'); b.className = 'btn alt'; b.textContent = c.nombre; b.dataset.id = c.id;
+      b.onclick = () => ver(c.id); $('cams').appendChild(b);
+    });
+    if (r.camaras.length === 1) ver(r.camaras[0].id);
+  } catch (e) {
+    $('visor').classList.add('hide');
+    if (token) { $('sub').textContent = e.message; return; }
+    if (e.sesion === true) { $('sub').textContent = e.message; $('visor').classList.remove('hide'); $('cams').textContent = ''; $('salir').classList.remove('hide'); return; }
+    pedirLogin(e.sesion === false && !/Ingresá/.test(e.message) ? e.message : '');
+  }
+}
+function pedirLogin(msg) {
+  $('sub').textContent = 'Ingresá con tu correo y contraseña para ver tus cámaras.';
+  $('acceso').classList.remove('hide'); aviso('aerr', msg);
+}
+const credenciales = () => ({ email: $('em').value.trim(), password: $('pw').value });
+$('ing').onclick = async () => {
+  const c = credenciales(); if (!c.email || !c.password) return aviso('aerr', 'Escribí tu correo y tu contraseña.');
+  $('ing').disabled = true;
+  const { error } = await sb.auth.signInWithPassword(c);
+  $('ing').disabled = false;
+  if (error) return aviso('aerr', /confirm/i.test(error.message) ? 'Todavía no confirmaste tu correo. Revisá tu bandeja (y el spam).' : 'Correo o contraseña incorrectos.');
+  aviso('aerr', ''); iniciar();
+};
+$('reg').onclick = async () => {
+  const c = credenciales(); if (!c.email || c.password.length < 8) return aviso('aerr', 'Escribí tu correo y una contraseña de al menos 8 caracteres.');
+  $('reg').disabled = true;
+  const { error } = await sb.auth.signUp({ ...c, options: { emailRedirectTo: location.origin + location.pathname } });
+  $('reg').disabled = false;
+  aviso('aerr', error ? 'No pudimos crear la cuenta: ' + error.message : 'Listo. Te enviamos un correo para confirmar tu cuenta. Tocá el enlace del mensaje y después ingresá acá.');
+};
+$('olv').onclick = async e => {
+  e.preventDefault();
+  const email = $('em').value.trim(); if (!email) return aviso('aerr', 'Escribí tu correo arriba y volvé a tocar "Olvidé mi contraseña".');
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+  aviso('aerr', error ? 'No pudimos enviar el correo: ' + error.message : 'Si ese correo tiene una cuenta, te enviamos un enlace para elegir una contraseña nueva.');
+};
+$('npb').onclick = async () => {
+  if ($('np').value.length < 8) return aviso('nerr', 'La contraseña debe tener al menos 8 caracteres.');
+  const { error } = await sb.auth.updateUser({ password: $('np').value });
+  if (error) return aviso('nerr', 'No pudimos guardarla: ' + error.message);
+  $('nueva').classList.add('hide'); iniciar();
+};
+$('salir').onclick = async () => { await sb.auth.signOut(); parar(); location.href = location.pathname; };
+sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY') { $('acceso').classList.add('hide'); $('visor').classList.add('hide'); $('sub').textContent = ''; $('nueva').classList.remove('hide'); } });
+(async () => {
+  if (token) return iniciar();
+  await new Promise(r => setTimeout(r, 300)); // deja que Supabase procese el enlace del correo
+  if (!$('nueva').classList.contains('hide')) return;
+  const { data: { session } } = await sb.auth.getSession();
+  session ? iniciar() : pedirLogin('');
+})();
+</script>
+</body>
+</html>
