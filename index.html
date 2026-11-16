@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script>
+// Si un correo de Supabase (recuperar contraseña o confirmar cuenta) cae en el inicio,
+// lo mandamos a la página de cámaras, que es la que sabe procesarlo.
+(function(){var h=location.hash||'',q=location.search||'';
+if(/type=(recovery|signup|magiclink|invite)|access_token=|error_description=/.test(h)||/[?&](code|token_hash)=/.test(q)){
+location.replace(location.pathname.replace(/[^\/]*$/,'')+'camaras.html'+q+h);}})();
+</script>
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Portal de Jaiseguridad</title>
