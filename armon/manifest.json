@@ -3,8 +3,8 @@
   "short_name": "Yosef Meir",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#1a171d",
-  "theme_color": "#1a171d",
+  "background_color": "#121c33",
+  "theme_color": "#121c33",
   "icons": [
     {
       "src": "apple-touch-icon.png",
