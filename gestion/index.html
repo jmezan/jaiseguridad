@@ -272,6 +272,8 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
 .matQ em{font-style:normal;font-size:12.5px;color:var(--muted);min-width:52px}
 .matElec{display:flex;gap:8px;align-items:center;font-size:14.5px;cursor:pointer;margin-top:4px}
 .matElec input{width:auto;flex:none}
+.compBox{display:flex;flex-direction:column;gap:6px}
+.compBtn{display:inline-flex;justify-content:center;align-items:center;padding:12px;border:1.5px dashed var(--line);border-radius:10px;cursor:pointer;font-weight:600;background:var(--bg)}
 </style>
 </head>
 <body>
@@ -1431,6 +1433,29 @@ function rArchivo(el){
 }
 
 /* ---------- Gastos de la instalación (por pedido) ---------- */
+// achica la foto antes de subirla (máx. 1600 px, JPEG) para que suba rápido con datos móviles
+async function achicarFoto(file){
+  const url=URL.createObjectURL(file);
+  try{ const img=await new Promise((ok,mal)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=mal; i.src=url; });
+    const k=Math.min(1,1600/Math.max(img.naturalWidth,img.naturalHeight)); const c=document.createElement("canvas");
+    c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k); c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+    return await new Promise((ok,mal)=>c.toBlob(b=>b?ok(b):mal(new Error("sin imagen")),"image/jpeg",0.78));
+  }catch(e){ if(file.size<8e6) return file; throw e; } finally{ URL.revokeObjectURL(url); }
+}
+async function subirComprobante(blob,trabajoId){
+  const sbc=window.__sb; const {data:u}=await sbc.auth.getUser(); const uid=u&&u.user&&u.user.id; if(!uid) throw new Error("sesión vencida");
+  const path=`${uid}/${trabajoId}-${Date.now().toString(36)}.jpg`;
+  const {error}=await sbc.storage.from("comprobantes").upload(path,blob,{contentType:blob.type||"image/jpeg",upsert:false}); if(error) throw error;
+  return path;
+}
+// abre la foto de un comprobante (link temporal de 10 minutos)
+async function verComprobante(path){
+  const w=window.open("","_blank");
+  try{ const {data,error}=await window.__sb.storage.from("comprobantes").createSignedUrl(path,600); if(error) throw error;
+    if(w) w.location.href=data.signedUrl; else location.href=data.signedUrl; }
+  catch(e){ if(w) w.close(); toast("No se pudo abrir el comprobante: "+(e.message||e)); }
+}
+document.addEventListener("click",e=>{ const a=e.target.closest&&e.target.closest("[data-comp]"); if(!a) return; e.preventDefault(); verComprobante(a.dataset.comp); },true);
 const MATS_TEC=[["fuente","Fuente 12V","u"],["balun","Video balun","u"],["cable","Cable","m aprox"],["camara","Cámara","u"],["estanco","Caja estanco","u"]];
 const CAT_GASTOS=["Materiales","Equipos comprados aparte","Técnicos / mano de obra","Transporte / combustible","Viáticos / comida","Herramientas","Otros"];
 // ganancia real = total vendido − costo de los equipos del proveedor − gastos cargados
@@ -2504,7 +2529,7 @@ function modalTrabajo(t0){
     bindMaps(m,"tgDir","tgMaps");
     $("#tgCli",m).onchange=()=>{ const c=findCli(); if(c){ if(!$("#tgDir",m).value.trim()) $("#tgDir",m).value=[c.direccion,c.localidad].filter(Boolean).join(", "); if(c.mapsUrl&&!$("#tgMaps",m).value.trim()){ $("#tgMaps",m).value=c.mapsUrl; } $("#tgDir",m).dispatchEvent(new Event("input")); if(!$("#tgTel",m).value.trim()) $("#tgTel",m).value=c.telefono||""; } };
     const draw=()=>{
-      $("#tgGx",m).innerHTML=gastos.length?`<div class="tbl-wrap cards"><table><thead><tr><th>Categoría</th><th>Detalle</th><th class="r">Importe</th><th></th></tr></thead><tbody>${gastos.map((g,i)=>`<tr><td><span class="pill p-mut">${esc(g.cat)}</span></td><td>${esc(g.detalle)}${g.porTecnico?` <span class="pill p-info">${esc(g.porTecnico)}</span>`:""}</td><td class="r num">${money(g.importe)}</td><td><button class="ghost sm" data-gx="${i}" aria-label="Quitar gasto">✕</button></td></tr>`).join("")}</tbody></table></div>`:`<div class="muted" style="font-size:13px">Sin gastos cargados (materiales, viáticos, combustible, técnico…).</div>`;
+      $("#tgGx",m).innerHTML=gastos.length?`<div class="tbl-wrap cards"><table><thead><tr><th>Categoría</th><th>Detalle</th><th class="r">Importe</th><th></th></tr></thead><tbody>${gastos.map((g,i)=>`<tr><td><span class="pill p-mut">${esc(g.cat)}</span></td><td>${esc(g.detalle)}${g.porTecnico?` <span class="pill p-info">${esc(g.porTecnico)}</span>`:""}${g.comprobante?` <a href="#" data-comp="${esc(g.comprobante)}" style="font-size:12.5px;white-space:nowrap">📷 Ver comprobante</a>`:""}</td><td class="r num">${money(g.importe)}</td><td><button class="ghost sm" data-gx="${i}" aria-label="Quitar gasto">✕</button></td></tr>`).join("")}</tbody></table></div>`:`<div class="muted" style="font-size:13px">Sin gastos cargados (materiales, viáticos, combustible, técnico…).</div>`;
       m.querySelectorAll("[data-gx]").forEach(b=>b.onclick=()=>{ gastos.splice(+b.dataset.gx,1); draw(); });
       const cob=Number($("#tgCob",m).value)||0, gs=gastos.reduce((a,g)=>a+(Number(g.importe)||0),0), pre=Number($("#tgPre",m).value)||0;
       $("#tgRes",m).innerHTML=`<div class="grid g4" style="gap:8px">
@@ -2546,7 +2571,7 @@ function modalTrabajo(t0){
       const upd=()=>{ $("#tgGcal",m).href=linkGcal(tt()); const tel=String(tt().telefono||"").replace(/\D/g,"");
         $("#tgWa",m).href="https://wa.me/"+waNum(tel)+"?text="+encodeURIComponent(`Hola${tt().clienteId||tt().clienteNombre?" "+agCli(tt()).split(" ")[0]:""}! Te escribimos de ${S.cfg.empresa||"JAI Seguridad"} para confirmar la ${String(tt().tipo||"visita").toLowerCase()} del ${fdia(agInicio(tt()))} a las ${tt().hora} hs${tt().direccion?" en "+tt().direccion:""}. ¡Gracias!`); };
       const drawOT=()=>{ const x=tt(), tecs=tecsDe(x);
-        $("#tgOtBox",m).innerHTML=`<h3>Orden de trabajo ${otNum(x.numero)}</h3>`+repsDe(t.id).filter(rr=>rr.estado).map(rr=>`<div class="banner info" style="flex-direction:column;align-items:flex-start;gap:4px"><span>${pillTec(rr.estado)} <b>${esc(rr.quien||"Instalador")}</b> · ${fdatetime(rr.ts)}</span>${rr.nota?`<span>💬 ${esc(rr.nota)}</span>`:""}${(rr.materiales||[]).length?`<span>🧰 Usó: ${esc(rr.materiales.map(x=>x.item+" "+x.cant+(x.unidad&&x.unidad!=="u"?" "+x.unidad:"")).join(", "))}</span>`:""}${(rr.gastos||[]).length?`<span>Gastó: ${money(rr.gastos.reduce((a,g)=>a+(Number(g.importe)||0),0))} (ya sumado abajo)</span>`:""}${Number(rr.cobrado)>0?`<span>Cobró al cliente: ${money(rr.cobrado)}${rr.medio?" ("+esc(rr.medio)+")":""}</span>`:""}</div>`).join("")+(tecs.length?tecs.map(e=>{ const env=(t.otEnviadas||{})[e.id]||(tecs.length===1&&t.otEnviada); return `<a class="wa" data-otwa="${esc(e.id)}" href="${esc(linkOT(x,e))}" target="_blank" rel="noopener" style="justify-content:center">Enviar orden a ${esc(e.nombre)} por WhatsApp</a>
+        $("#tgOtBox",m).innerHTML=`<h3>Orden de trabajo ${otNum(x.numero)}</h3>`+repsDe(t.id).filter(rr=>rr.estado).map(rr=>`<div class="banner info" style="flex-direction:column;align-items:flex-start;gap:4px"><span>${pillTec(rr.estado)} <b>${esc(rr.quien||"Instalador")}</b> · ${fdatetime(rr.ts)}</span>${rr.nota?`<span>💬 ${esc(rr.nota)}</span>`:""}${(rr.materiales||[]).length?`<span>🧰 Usó: ${esc(rr.materiales.map(x=>x.item+" "+x.cant+(x.unidad&&x.unidad!=="u"?" "+x.unidad:"")).join(", "))}</span>`:""}${(rr.gastos||[]).length?`<span>Gastó: ${money(rr.gastos.reduce((a,g)=>a+(Number(g.importe)||0),0))} (ya sumado abajo)${rr.gastos.filter(g=>g.comprobante).map(g=>` · <a href="#" data-comp="${esc(g.comprobante)}">📷 Ver comprobante</a>`).join("")}</span>`:""}${Number(rr.cobrado)>0?`<span>Cobró al cliente: ${money(rr.cobrado)}${rr.medio?" ("+esc(rr.medio)+")":""}</span>`:""}</div>`).join("")+(tecs.length?tecs.map(e=>{ const env=(t.otEnviadas||{})[e.id]||(tecs.length===1&&t.otEnviada); return `<a class="wa" data-otwa="${esc(e.id)}" href="${esc(linkOT(x,e))}" target="_blank" rel="noopener" style="justify-content:center">Enviar orden a ${esc(e.nombre)} por WhatsApp</a>
           <div class="muted" style="font-size:12.5px;margin:-2px 0 4px">${e.telefono?"":`${esc(e.nombre)} no tiene teléfono cargado: WhatsApp te va a pedir que elijas el contacto. `}${env?"Enviada: "+fdatetime(env):"Todavía no enviada."}</div>`; }).join("")+`<div class="muted" style="font-size:12.5px">Si cambiaste algo, tocá «Guardar» después de enviarla.</div>
           <div style="margin-top:6px;font-size:13px;font-weight:600">¿Te avisó por WhatsApp? Marcá cómo va:</div>
           <div class="row" style="gap:6px">${Object.entries(ESTADOS_TEC).map(([k,v])=>`<button type="button" class="sm ${t.estadoTec===k?"pri":""}" data-mest="${k}">${v[0]}</button>`).join("")}</div>
@@ -2675,8 +2700,9 @@ async function sincronizarTec(){
     if(!nuevosR.length) continue;
     const last=reps[0]; const syncs={...vistos}; reps.forEach(r=>syncs[r.parteId]=r.ts);
     const upd={tecSyncs:syncs,tecSync:last.ts,estadoTec:last.estado||"",estadoTecTs:last.ts,notaTec:last.nota||"",tecQuien:last.quien||""};
-    const ids=new Set((t.gastos||[]).map(g=>g.id)); const nuevos=[]; nuevosR.forEach(r=>(r.gastos||[]).forEach(g=>{ if(g&&g.id&&!ids.has(g.id)){ ids.add(g.id); nuevos.push({...g,porTecnico:r.quien||"Instalador"}); } }));
-    if(nuevos.length) upd.gastos=[...(t.gastos||[]),...nuevos];
+    const base=(t.gastos||[]).filter(g=>!(g.elec&&nuevosR.some(r=>(r.quien||"Instalador")===g.porTecnico&&!(r.gastos||[]).some(x=>x.id===g.id))));
+    const ids=new Set(base.map(g=>g.id)); const nuevos=[]; nuevosR.forEach(r=>(r.gastos||[]).forEach(g=>{ if(g&&g.id&&!ids.has(g.id)){ ids.add(g.id); nuevos.push({...g,porTecnico:r.quien||"Instalador"}); } }));
+    if(nuevos.length||base.length!==(t.gastos||[]).length) upd.gastos=[...base,...nuevos];
     const cobr=nuevosR.filter(r=>Number(r.cobrado)>0);
     if(cobr.length&&!(Number(t.cobrado)>0)){ upd.cobrado=Math.round(cobr.reduce((a,r)=>a+Number(r.cobrado),0)); upd.medio=cobr[0].medio||t.medio||""; }
     if(nuevosR.some(r=>r.estado==="realizado")&&agAbierto(t)) upd.estado="realizado";
@@ -2814,7 +2840,11 @@ function modalOT(id){
       <div id="otMx"></div>
       <div class="fgrid fg2 otOtro"><label class="f">Otro material<input id="otMd" placeholder="Ej.: disco 1TB, conectores"></label><label class="f">Cantidad<span class="row" style="gap:6px;flex-wrap:nowrap"><input type="number" inputmode="decimal" id="otMc" min="0" step="any" placeholder="1"><button type="button" id="otMok">Agregar</button></span></label></div>
       <label class="matElec"><input type="checkbox" id="otElec" ${elecR0?"checked":""}> <span><b>Compré materiales eléctricos</b></span></label>
-      <div id="otElecBox" class="fgrid fg2 ${elecR0?"":"hide"}"><label class="f">Qué compraste<input id="otElecD" value="${esc(elecR0?String(elecR0.detalle||"").replace(/^Materiales eléctricos:?\s*/,""):"")}" placeholder="Ej.: cablecanal, tomas, cinta"></label><label class="f">¿Cuánto gastaste?<input type="number" inputmode="numeric" id="otElecI" value="${elecR0?Number(elecR0.importe)||"":""}" placeholder="0"></label></div>
+      <div id="otElecBox" class="fgrid fg2 ${elecR0?"":"hide"}"><label class="f">Qué compraste<input id="otElecD" value="${esc(elecR0?String(elecR0.detalle||"").replace(/^Materiales eléctricos:?\s*/,""):"")}" placeholder="Ej.: cablecanal, tomas, cinta"></label><label class="f">¿Cuánto gastaste?<input type="number" inputmode="numeric" id="otElecI" value="${elecR0?Number(elecR0.importe)||"":""}" placeholder="0"></label>
+        <div class="f full compBox"><span>Foto del comprobante <b style="color:var(--bad)">*</b></span>
+          <label class="btn compBtn" for="otElecF">📷 ${elecR0&&elecR0.comprobante?"Cambiar foto":"Sacar foto del ticket"}</label>
+          <input type="file" id="otElecF" accept="image/*" capture="environment" class="hide">
+          <div id="otElecFv" class="muted" style="font-size:13px">${elecR0&&elecR0.comprobante?"✅ Comprobante cargado":"Obligatorio: sacale una foto al ticket o factura."}</div></div></div>
     </div>
     <div class="panel" style="display:flex;flex-direction:column;gap:8px"><h3>¿Le cobraste al cliente?</h3>
       <div class="fgrid fg2"><label class="f">Importe cobrado<input type="number" id="otCob" inputmode="numeric" value="${Number(r0.cobrado)||""}" placeholder="0"></label>
@@ -2829,6 +2859,10 @@ function modalOT(id){
     drawM();
     $("#otMok",m).onclick=()=>{ const d=$("#otMd",m).value.trim(), c=Number($("#otMc",m).value)||1; if(!d){ toast("Escribí qué material usaste."); $("#otMd",m).focus(); return; }
       otrosMat.push({k:"otro",item:d,cant:c,unidad:"u"}); $("#otMd",m).value=""; $("#otMc",m).value=""; drawM(); };
+    let fotoComp=null;
+    $("#otElecF",m).onchange=async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; $("#otElecFv",m).textContent="Preparando la foto…";
+      try{ fotoComp=await achicarFoto(f); $("#otElecFv",m).innerHTML=`<img src="${URL.createObjectURL(fotoComp)}" alt="Comprobante" style="max-width:140px;max-height:140px;border-radius:8px;border:1px solid var(--line);display:block;margin-top:4px"> Lista para subir`; }
+      catch(err){ console.error(err); fotoComp=null; $("#otElecFv",m).textContent="No se pudo leer la foto. Probá de nuevo."; } };
     $("#otElec",m).onchange=()=>{ $("#otElecBox",m).classList.toggle("hide",!$("#otElec",m).checked); if($("#otElec",m).checked) $("#otElecD",m).focus(); };
     const draw=()=>{ if(!$("#otGx",m)) return; $("#otGx",m).innerHTML=gastos.length?gastos.map((g,i)=>`<div class="spread" style="padding:4px 0;border-bottom:1px solid var(--line)"><span>${esc(g.detalle)} <span class="muted" style="font-size:12.5px">· ${esc(g.cat)}</span></span><span class="row" style="gap:6px"><b class="num">${money(g.importe)}</b><button class="ghost sm" data-gx="${i}" aria-label="Quitar">✕</button></span></div>`).join("")+`<div style="text-align:right;font-weight:700;padding-top:4px">Total ${money(gastos.reduce((a,g)=>a+(Number(g.importe)||0),0))}</div>`:`<div class="muted" style="font-size:13.5px">Cargá lo que gastaste: materiales, nafta, peajes, comida…</div>`;
       m.querySelectorAll("[data-gx]").forEach(b=>b.onclick=()=>{ gastos.splice(+b.dataset.gx,1); draw(); }); };
@@ -2844,7 +2878,13 @@ function modalOT(id){
       // materiales eléctricos: es plata que puso el instalador → va como gasto con importe
       let gs=gastos.filter(g=>!g.elec);
       if($("#otElec",m).checked){ const imp=Math.round(Number($("#otElecI",m).value)||0); if(!imp){ toast("Poné cuánto gastaste en materiales eléctricos."); $("#otElecI",m).focus(); return; }
-        const det=$("#otElecD",m).value.trim(); gs=gs.concat([{id:(elecR0&&elecR0.importe===imp&&elecR0.id)||("el"+id.slice(0,6)+Date.now().toString(36)),fecha:new Date().toISOString(),cat:"Materiales",detalle:"Materiales eléctricos"+(det?": "+det:""),importe:imp,elec:true}]); }
+        let comp=elecR0&&elecR0.comprobante||"";
+        if(!fotoComp&&!comp){ toast("Falta la foto del comprobante de la compra."); $("#otElecF",m).click(); return; }
+        if(fotoComp){ const b=$("#otOk",m); b.disabled=true; b.textContent="Subiendo foto…";
+          try{ comp=await subirComprobante(fotoComp,id); }catch(err){ console.error(err); b.disabled=false; b.textContent="Guardar"; toast("No se pudo subir la foto: "+(err.message||err)+". Revisá la señal y probá de nuevo."); return; }
+          b.disabled=false; b.textContent="Guardar"; }
+        const det=$("#otElecD",m).value.trim(); const mismo=elecR0&&elecR0.importe===imp&&elecR0.comprobante===comp;
+        gs=gs.concat([{id:(mismo&&elecR0.id)||("el"+id.slice(0,6)+Date.now().toString(36)),fecha:new Date().toISOString(),cat:"Materiales",detalle:"Materiales eléctricos"+(det?": "+det:""),importe:imp,elec:true,comprobante:comp}]); }
       const ok=await guardarParte(p=>{ p.trabajos[id]={estado:est,ts:new Date().toISOString(),nota,gastos:gs,materiales,cobrado:cob,medio:$("#otMed",m).value}; },"Guardado");
       if(ok) closeModal();
     };
