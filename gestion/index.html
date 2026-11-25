@@ -264,6 +264,15 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
 #jaiLogin .lgBio{background:#fff;color:#1a2238;border:1.5px solid #1a2238}
 #jaiLogin .lgMsg{background:#eef4ff;border-radius:9px;padding:10px 12px;font-size:14px;line-height:1.4}
 </style>
+<style>
+.matGrid{display:flex;flex-direction:column;gap:6px}
+.matRow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:15px}
+.matQ{display:flex;align-items:center;gap:6px}
+.matQ input{width:86px;text-align:right}
+.matQ em{font-style:normal;font-size:12.5px;color:var(--muted);min-width:52px}
+.matElec{display:flex;gap:8px;align-items:center;font-size:14.5px;cursor:pointer;margin-top:4px}
+.matElec input{width:auto;flex:none}
+</style>
 </head>
 <body>
 <div class="app">
@@ -1422,6 +1431,7 @@ function rArchivo(el){
 }
 
 /* ---------- Gastos de la instalación (por pedido) ---------- */
+const MATS_TEC=[["fuente","Fuente 12V","u"],["balun","Video balun","u"],["cable","Cable","m aprox"],["camara","Cámara","u"],["estanco","Caja estanco","u"]];
 const CAT_GASTOS=["Materiales","Equipos comprados aparte","Técnicos / mano de obra","Transporte / combustible","Viáticos / comida","Herramientas","Otros"];
 // ganancia real = total vendido − costo de los equipos del proveedor − gastos cargados
 function resultadoPed(p){
@@ -2477,6 +2487,7 @@ function modalTrabajo(t0){
         <label class="f full">Medio de cobro<select id="tgMed">${["","Efectivo","Transferencia","Mercado Pago","Tarjeta","Cheque"].map(x=>`<option value="${x}" ${x===(t.medio||"")?"selected":""}>${x||"—"}</option>`).join("")}</select></label>
         <label class="full" style="display:flex;gap:8px;align-items:center;font-size:13.5px;cursor:pointer"><input type="checkbox" id="tgCta" style="width:auto;flex:none" ${t.enCuenta!==false?"checked":""}> <span>Cuando esté realizado, pasarlo a la cuenta corriente del cliente</span></label>
       </div>
+      ${!nuevo?`<div id="tgMat"></div>`:""}
       <div id="tgGx"></div>
       <div class="fgrid agGx" id="tgGxAdd">
         <label class="f">Categoría<select id="tgGc">${CAT_GASTOS.map(c=>`<option>${c}</option>`).join("")}</select></label>
@@ -2503,6 +2514,26 @@ function modalTrabajo(t0){
         <div class="tile ${cob-gs<0?"alert":"ok"}"><span class="k">Ganancia</span><span class="v" style="font-size:18px;color:${cob-gs<0?"var(--bad)":"var(--good)"}">${money(cob-gs)}</span></div></div>`;
     };
     $("#tgCob",m).oninput=draw; $("#tgPre",m).oninput=draw; draw();
+    // materiales que cargaron los instaladores → el dueño les pone valor y pasan a gastos
+    const drawMat=()=>{ const box=$("#tgMat",m); if(!box) return; const filas=materialesDe(t.id);
+      // quita de gastos materiales que el instalador ya no reporta
+      const keys=new Set(filas.map(f=>f.gid)); const antes=gastos.length; gastos=gastos.filter(g=>!g.mat||keys.has(g.id)); if(gastos.length!==antes) draw();
+      if(!filas.length){ box.innerHTML=""; return; }
+      const pm=S.cfg.preciosMat||{};
+      box.innerHTML=`<div class="panel" style="padding:12px;display:flex;flex-direction:column;gap:6px;background:var(--bg)"><b>🧰 Materiales que usaron los instaladores</b>
+        <div class="muted" style="font-size:12.5px">Poné el valor unitario y tocá «Pasar a gastos». Después «Guardar».</div>
+        <div class="tbl-wrap cards"><table><thead><tr><th>Material</th><th class="r">Cant.</th><th class="r">Valor unit.</th><th class="r">Subtotal</th></tr></thead><tbody>${filas.map((f,i)=>{ const g=gastos.find(x=>x.id===f.gid); const pu=g?(g.pu||(f.cant?Math.round(g.importe/f.cant):"")):(pm[f.pkey]||"");
+          return `<tr><td data-l="Material">${esc(f.item)} <span class="muted" style="font-size:12px">· ${esc(f.quien)}</span></td><td class="r num" data-l="Cant.">${esc(String(f.cant))} ${esc(f.unidad||"")}</td><td class="r" data-l="Valor unit."><input type="number" step="1" data-pm="${i}" value="${pu}" placeholder="0" style="max-width:120px;text-align:right"></td><td class="r num" data-l="Subtotal" data-st="${i}">${pu?money(pu*f.cant):"—"}</td></tr>`; }).join("")}</tbody></table></div>
+        <div class="row" style="justify-content:flex-end"><button type="button" class="sm pri" id="tgMatOk">Pasar a gastos</button></div></div>`;
+      box.querySelectorAll("[data-pm]").forEach(inp=>inp.oninput=()=>{ const f=filas[+inp.dataset.pm], v=Number(inp.value)||0; box.querySelector(`[data-st="${inp.dataset.pm}"]`).textContent=v?money(v*f.cant):"—"; });
+      $("#tgMatOk",m).onclick=()=>{ const nuevosPm={...(S.cfg.preciosMat||{})}; let n=0;
+        filas.forEach((f,i)=>{ const v=Number(box.querySelector(`[data-pm="${i}"]`).value)||0; gastos=gastos.filter(g=>g.id!==f.gid);
+          if(v>0){ gastos.push({id:f.gid,fecha:new Date().toISOString(),cat:"Materiales",detalle:`${f.item} x${f.cant}${f.unidad&&f.unidad!=="u"?" "+f.unidad:""}`,importe:Math.round(v*f.cant),pu:v,porTecnico:f.quien,mat:true}); nuevosPm[f.pkey]=v; n++; } });
+        draw(); drawMat();
+        if(JSON.stringify(nuevosPm)!==JSON.stringify(S.cfg.preciosMat||{})) write(()=>S.db.doc("config/general").update({preciosMat:nuevosPm}));
+        toast(n?"Materiales sumados a gastos. Tocá «Guardar».":"Poné al menos un valor."); };
+    };
+    drawMat();
     $("#tgCob",m).onchange=()=>{ if((Number($("#tgCob",m).value)||0)>0&&["pendiente","en_proceso"].includes($("#tgEst",m).value)) $("#tgEst",m).value="realizado"; };
     $("#tgGok",m).onclick=()=>{ const imp=Math.round(Number($("#tgGi",m).value)||0); if(!imp){ toast("Ingresá el importe del gasto."); $("#tgGi",m).focus(); return; }
       gastos.push({id:Math.random().toString(36).slice(2,10),fecha:new Date().toISOString(),cat:$("#tgGc",m).value,detalle:$("#tgGd",m).value.trim()||$("#tgGc",m).value,importe:imp}); $("#tgGd",m).value=""; $("#tgGi",m).value=""; draw(); };
@@ -2515,7 +2546,7 @@ function modalTrabajo(t0){
       const upd=()=>{ $("#tgGcal",m).href=linkGcal(tt()); const tel=String(tt().telefono||"").replace(/\D/g,"");
         $("#tgWa",m).href="https://wa.me/"+waNum(tel)+"?text="+encodeURIComponent(`Hola${tt().clienteId||tt().clienteNombre?" "+agCli(tt()).split(" ")[0]:""}! Te escribimos de ${S.cfg.empresa||"JAI Seguridad"} para confirmar la ${String(tt().tipo||"visita").toLowerCase()} del ${fdia(agInicio(tt()))} a las ${tt().hora} hs${tt().direccion?" en "+tt().direccion:""}. ¡Gracias!`); };
       const drawOT=()=>{ const x=tt(), tecs=tecsDe(x);
-        $("#tgOtBox",m).innerHTML=`<h3>Orden de trabajo ${otNum(x.numero)}</h3>`+repsDe(t.id).filter(rr=>rr.estado).map(rr=>`<div class="banner info" style="flex-direction:column;align-items:flex-start;gap:4px"><span>${pillTec(rr.estado)} <b>${esc(rr.quien||"Instalador")}</b> · ${fdatetime(rr.ts)}</span>${rr.nota?`<span>💬 ${esc(rr.nota)}</span>`:""}${(rr.gastos||[]).length?`<span>Gastos: ${money(rr.gastos.reduce((a,g)=>a+(Number(g.importe)||0),0))} (ya sumados abajo)</span>`:""}${Number(rr.cobrado)>0?`<span>Cobró al cliente: ${money(rr.cobrado)}${rr.medio?" ("+esc(rr.medio)+")":""}</span>`:""}</div>`).join("")+(tecs.length?tecs.map(e=>{ const env=(t.otEnviadas||{})[e.id]||(tecs.length===1&&t.otEnviada); return `<a class="wa" data-otwa="${esc(e.id)}" href="${esc(linkOT(x,e))}" target="_blank" rel="noopener" style="justify-content:center">Enviar orden a ${esc(e.nombre)} por WhatsApp</a>
+        $("#tgOtBox",m).innerHTML=`<h3>Orden de trabajo ${otNum(x.numero)}</h3>`+repsDe(t.id).filter(rr=>rr.estado).map(rr=>`<div class="banner info" style="flex-direction:column;align-items:flex-start;gap:4px"><span>${pillTec(rr.estado)} <b>${esc(rr.quien||"Instalador")}</b> · ${fdatetime(rr.ts)}</span>${rr.nota?`<span>💬 ${esc(rr.nota)}</span>`:""}${(rr.materiales||[]).length?`<span>🧰 Usó: ${esc(rr.materiales.map(x=>x.item+" "+x.cant+(x.unidad&&x.unidad!=="u"?" "+x.unidad:"")).join(", "))}</span>`:""}${(rr.gastos||[]).length?`<span>Gastó: ${money(rr.gastos.reduce((a,g)=>a+(Number(g.importe)||0),0))} (ya sumado abajo)</span>`:""}${Number(rr.cobrado)>0?`<span>Cobró al cliente: ${money(rr.cobrado)}${rr.medio?" ("+esc(rr.medio)+")":""}</span>`:""}</div>`).join("")+(tecs.length?tecs.map(e=>{ const env=(t.otEnviadas||{})[e.id]||(tecs.length===1&&t.otEnviada); return `<a class="wa" data-otwa="${esc(e.id)}" href="${esc(linkOT(x,e))}" target="_blank" rel="noopener" style="justify-content:center">Enviar orden a ${esc(e.nombre)} por WhatsApp</a>
           <div class="muted" style="font-size:12.5px;margin:-2px 0 4px">${e.telefono?"":`${esc(e.nombre)} no tiene teléfono cargado: WhatsApp te va a pedir que elijas el contacto. `}${env?"Enviada: "+fdatetime(env):"Todavía no enviada."}</div>`; }).join("")+`<div class="muted" style="font-size:12.5px">Si cambiaste algo, tocá «Guardar» después de enviarla.</div>
           <div style="margin-top:6px;font-size:13px;font-weight:600">¿Te avisó por WhatsApp? Marcá cómo va:</div>
           <div class="row" style="gap:6px">${Object.entries(ESTADOS_TEC).map(([k,v])=>`<button type="button" class="sm ${t.estadoTec===k?"pri":""}" data-mest="${k}">${v[0]}</button>`).join("")}</div>
@@ -2614,6 +2645,13 @@ const pillTec = (e,extra) => { const x=ESTADOS_TEC[e]; return x?`<span class="pi
 const hhmm = iso => { const d=new Date(iso); return isNaN(d)?"":d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}); };
 function ordenDe(t){ return {numero:t.numero||0,tipo:t.tipo||"Service",fecha:t.fecha||"",hora:t.hora||"",duracion:Number(t.duracion)||60,cliente:agCli(t),direccion:t.direccion||"",telefono:t.telefono||"",descripcion:t.descripcion||"",mapsUrl:t.mapsUrl||"",tecnicoId:tecIds(t)[0]||"",tecnicoIds:tecIds(t),tecnicos:tecIds(t).map(id=>({id,nombre:((S.empleados||[]).find(e=>e.id===id)||{}).nombre||"Instalador"})),tecnicoNombre:t.tecnico||"",estado:t.estado||"pendiente",empresa:S.cfg.empresa||"JAI Seguridad",whats:waNum(S.cfg.whatsRespuestas||S.cfg.telefono)||""}; }
 // último reporte de un instalador sobre un trabajo
+// materiales reportados por los instaladores para un trabajo (una fila por material y por instalador)
+function materialesDe(id){
+  const out=[]; repsDe(id).forEach(r=>(Array.isArray(r.materiales)?r.materiales:[]).forEach(x=>{ if(!(Number(x.cant)>0)) return;
+    const base=(r.parteId||"")+"|"+(x.k||"")+"|"+(x.item||""); let h=0; for(const ch of base) h=(h*31+ch.charCodeAt(0))>>>0;
+    out.push({gid:"mat_"+h.toString(36),pkey:norm(x.item||x.k||""),item:x.item||x.k,cant:Number(x.cant),unidad:x.unidad||"u",quien:r.quien||"Instalador"}); }));
+  return out;
+}
 function repsDe(id){ return (S.partes||[]).filter(p=>p.trabajos&&p.trabajos[id]).map(p=>({...p.trabajos[id],quien:p.nombre||"",tecnicoId:p.tecnicoId||"",parteId:p.id})).sort((a,b)=>String(b.ts).localeCompare(String(a.ts))); }
 function repDe(id){ let best=null; (S.partes||[]).forEach(p=>{ const r=p.trabajos&&p.trabajos[id]; if(r&&(!best||String(r.ts)>String(best.ts))) best={...r,quien:p.nombre||""}; }); return best; }
 
@@ -2753,6 +2791,9 @@ function modalOT(id){
   const o=S.ordenes.find(x=>x.id===id); if(!o) return;
   const r0=JSON.parse(JSON.stringify(((S.miParte||{}).trabajos||{})[id]||{}));
   const gastos=r0.gastos||[];
+  const matsR0=Array.isArray(r0.materiales)?r0.materiales:[];
+  const otrosMat=matsR0.filter(x=>x.k==="otro").map(x=>({...x}));
+  const elecR0=gastos.find(g=>g.elec);
   const tel=String(o.telefono||"").replace(/[^\d+]/g,"");
   modal(`<div class="spread"><h2 style="margin:0">${otNum(o.numero)} · ${esc(o.tipo)}</h2>${r0.estado?pillTec(r0.estado):""}</div>
     <div style="font-size:15px;line-height:1.5">
@@ -2767,14 +2808,14 @@ function modalOT(id){
       <div class="tecEst">${Object.entries(ESTADOS_TEC).map(([k,v])=>`<button type="button" data-est="${k}" class="${r0.estado===k?"pri":""}">${v[0]}</button>`).join("")}</div>
       <label class="f">Qué se hizo / comentarios<textarea id="otNota" rows="3" placeholder="Ej.: se cambió la fuente del DVR, quedó grabando las 4 cámaras">${esc(r0.nota||"")}</textarea></label>
     </div>
-    <div class="panel" style="display:flex;flex-direction:column;gap:8px"><h3>Gastos</h3>
-      <div id="otGx"></div>
-      <div class="fgrid agGx">
-        <label class="f">Categoría<select id="otGc">${CAT_GASTOS.map(c=>`<option>${c}</option>`).join("")}</select></label>
-        <label class="f">Detalle<input id="otGd" placeholder="Ej.: fuente 12V 5A"></label>
-        <label class="f">Importe<input type="number" id="otGi" inputmode="numeric" placeholder="0"></label>
-        <button type="button" id="otGok">Agregar</button>
-      </div></div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:10px"><h3>Materiales usados</h3>
+      <div class="muted" style="font-size:13.5px;margin-top:-4px">Poné la cantidad de lo que usaste. Lo que no usaste, dejalo vacío.</div>
+      <div class="matGrid">${MATS_TEC.map(([k,n,u])=>`<label class="matRow"><span>${esc(n)}</span><span class="matQ"><input type="number" inputmode="decimal" min="0" step="any" data-mat="${k}" value="${esc(String((matsR0.find(x=>x.k===k)||{}).cant||""))}" placeholder="0"><em>${esc(u)}</em></span></label>`).join("")}</div>
+      <div id="otMx"></div>
+      <div class="fgrid fg2 otOtro"><label class="f">Otro material<input id="otMd" placeholder="Ej.: disco 1TB, conectores"></label><label class="f">Cantidad<span class="row" style="gap:6px;flex-wrap:nowrap"><input type="number" inputmode="decimal" id="otMc" min="0" step="any" placeholder="1"><button type="button" id="otMok">Agregar</button></span></label></div>
+      <label class="matElec"><input type="checkbox" id="otElec" ${elecR0?"checked":""}> <span><b>Compré materiales eléctricos</b></span></label>
+      <div id="otElecBox" class="fgrid fg2 ${elecR0?"":"hide"}"><label class="f">Qué compraste<input id="otElecD" value="${esc(elecR0?String(elecR0.detalle||"").replace(/^Materiales eléctricos:?\s*/,""):"")}" placeholder="Ej.: cablecanal, tomas, cinta"></label><label class="f">¿Cuánto gastaste?<input type="number" inputmode="numeric" id="otElecI" value="${elecR0?Number(elecR0.importe)||"":""}" placeholder="0"></label></div>
+    </div>
     <div class="panel" style="display:flex;flex-direction:column;gap:8px"><h3>¿Le cobraste al cliente?</h3>
       <div class="fgrid fg2"><label class="f">Importe cobrado<input type="number" id="otCob" inputmode="numeric" value="${Number(r0.cobrado)||""}" placeholder="0"></label>
       <label class="f">Medio<select id="otMed">${["","Efectivo","Transferencia","Mercado Pago"].map(x=>`<option value="${x}" ${x===(r0.medio||"")?"selected":""}>${x||"—"}</option>`).join("")}</select></label></div></div>
@@ -2783,16 +2824,28 @@ function modalOT(id){
   m=>{
     if(S.soloLect){ m.querySelectorAll("[data-waest]").forEach(a=>a.addEventListener("click",()=>{ const k=a.dataset.waest; if(ESTADOS_TEC[k]) guardarParte(p=>{ p.trabajos[id]={...(p.trabajos[id]||{}),estado:k,ts:new Date().toISOString()}; }); })); return; }
     let est=r0.estado||"";
-    const draw=()=>{ $("#otGx",m).innerHTML=gastos.length?gastos.map((g,i)=>`<div class="spread" style="padding:4px 0;border-bottom:1px solid var(--line)"><span>${esc(g.detalle)} <span class="muted" style="font-size:12.5px">· ${esc(g.cat)}</span></span><span class="row" style="gap:6px"><b class="num">${money(g.importe)}</b><button class="ghost sm" data-gx="${i}" aria-label="Quitar">✕</button></span></div>`).join("")+`<div style="text-align:right;font-weight:700;padding-top:4px">Total ${money(gastos.reduce((a,g)=>a+(Number(g.importe)||0),0))}</div>`:`<div class="muted" style="font-size:13.5px">Cargá lo que gastaste: materiales, nafta, peajes, comida…</div>`;
+    const drawM=()=>{ $("#otMx",m).innerHTML=otrosMat.map((x,i)=>`<div class="spread" style="padding:4px 0;border-bottom:1px solid var(--line)"><span>${esc(x.item)}</span><span class="row" style="gap:6px"><b>${esc(String(x.cant))} ${esc(x.unidad||"u")}</b><button class="ghost sm" data-mx="${i}" aria-label="Quitar">✕</button></span></div>`).join("");
+      m.querySelectorAll("[data-mx]").forEach(b=>b.onclick=()=>{ otrosMat.splice(+b.dataset.mx,1); drawM(); }); };
+    drawM();
+    $("#otMok",m).onclick=()=>{ const d=$("#otMd",m).value.trim(), c=Number($("#otMc",m).value)||1; if(!d){ toast("Escribí qué material usaste."); $("#otMd",m).focus(); return; }
+      otrosMat.push({k:"otro",item:d,cant:c,unidad:"u"}); $("#otMd",m).value=""; $("#otMc",m).value=""; drawM(); };
+    $("#otElec",m).onchange=()=>{ $("#otElecBox",m).classList.toggle("hide",!$("#otElec",m).checked); if($("#otElec",m).checked) $("#otElecD",m).focus(); };
+    const draw=()=>{ if(!$("#otGx",m)) return; $("#otGx",m).innerHTML=gastos.length?gastos.map((g,i)=>`<div class="spread" style="padding:4px 0;border-bottom:1px solid var(--line)"><span>${esc(g.detalle)} <span class="muted" style="font-size:12.5px">· ${esc(g.cat)}</span></span><span class="row" style="gap:6px"><b class="num">${money(g.importe)}</b><button class="ghost sm" data-gx="${i}" aria-label="Quitar">✕</button></span></div>`).join("")+`<div style="text-align:right;font-weight:700;padding-top:4px">Total ${money(gastos.reduce((a,g)=>a+(Number(g.importe)||0),0))}</div>`:`<div class="muted" style="font-size:13.5px">Cargá lo que gastaste: materiales, nafta, peajes, comida…</div>`;
       m.querySelectorAll("[data-gx]").forEach(b=>b.onclick=()=>{ gastos.splice(+b.dataset.gx,1); draw(); }); };
     draw();
     m.querySelectorAll("[data-est]").forEach(b=>b.onclick=()=>{ est=b.dataset.est; m.querySelectorAll("[data-est]").forEach(x=>x.classList.toggle("pri",x===b)); });
-    $("#otGok",m).onclick=()=>{ const imp=Math.round(Number($("#otGi",m).value)||0); if(!imp){ toast("Poné el importe del gasto."); $("#otGi",m).focus(); return; }
-      gastos.push({id:"t"+Math.random().toString(36).slice(2,10),fecha:new Date().toISOString(),cat:$("#otGc",m).value,detalle:$("#otGd",m).value.trim()||$("#otGc",m).value,importe:imp}); $("#otGd",m).value=""; $("#otGi",m).value=""; draw(); };
+    $("#otGok",m)&&($("#otGok",m).onclick=()=>{ const imp=Math.round(Number($("#otGi",m).value)||0); if(!imp){ toast("Poné el importe del gasto."); $("#otGi",m).focus(); return; }
+      gastos.push({id:"t"+Math.random().toString(36).slice(2,10),fecha:new Date().toISOString(),cat:$("#otGc",m).value,detalle:$("#otGd",m).value.trim()||$("#otGc",m).value,importe:imp}); $("#otGd",m).value=""; $("#otGi",m).value=""; draw(); });
     $("#otOk",m).onclick=async()=>{
       const nota=$("#otNota",m).value.trim(), cob=Math.round(Number($("#otCob",m).value)||0);
       if(est==="no_realizado"&&!nota){ toast("Contá en comentarios por qué no se pudo hacer."); $("#otNota",m).focus(); return; }
-      const ok=await guardarParte(p=>{ p.trabajos[id]={estado:est,ts:new Date().toISOString(),nota,gastos,cobrado:cob,medio:$("#otMed",m).value}; },"Guardado");
+      // materiales: los fijos con cantidad + los "otros"
+      const materiales=MATS_TEC.map(([k,n,u])=>({k,item:n,unidad:u,cant:Number(m.querySelector(`[data-mat="${k}"]`).value)||0})).filter(x=>x.cant>0).concat(otrosMat);
+      // materiales eléctricos: es plata que puso el instalador → va como gasto con importe
+      let gs=gastos.filter(g=>!g.elec);
+      if($("#otElec",m).checked){ const imp=Math.round(Number($("#otElecI",m).value)||0); if(!imp){ toast("Poné cuánto gastaste en materiales eléctricos."); $("#otElecI",m).focus(); return; }
+        const det=$("#otElecD",m).value.trim(); gs=gs.concat([{id:(elecR0&&elecR0.importe===imp&&elecR0.id)||("el"+id.slice(0,6)+Date.now().toString(36)),fecha:new Date().toISOString(),cat:"Materiales",detalle:"Materiales eléctricos"+(det?": "+det:""),importe:imp,elec:true}]); }
+      const ok=await guardarParte(p=>{ p.trabajos[id]={estado:est,ts:new Date().toISOString(),nota,gastos:gs,materiales,cobrado:cob,medio:$("#otMed",m).value}; },"Guardado");
       if(ok) closeModal();
     };
   },620);
