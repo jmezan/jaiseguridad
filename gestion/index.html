@@ -443,6 +443,7 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
       }catch(err){
         let m=err.message||String(err);
         if(/Invalid login/i.test(m)) m="Email o contraseña incorrectos.";
+        else if(/session missing|session_not_found|JWT expired/i.test(m)){ pantallaLogin("entrar","Ese link ya no sirve (se usó o venció). Tocá «Olvidé mi contraseña» para pedir uno nuevo, o ingresá con tu contraseña."); return; }
         else if(/rate limit|over_email/i.test(m)) m="Ya se mandaron varios emails en la última hora. Esperá un rato (hasta 1 hora) y probá de nuevo.";
         else if(/Email not confirmed/i.test(m)) m="Falta confirmar el email: abrí el mail que te mandamos y tocá el link.";
         else if(/not confirmed/i.test(m)) m="Todavía no confirmaste tu email: revisá tu casilla.";
@@ -458,7 +459,8 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
   sb.auth.onAuthStateChange((ev,s)=>{ if(ev==="PASSWORD_RECOVERY") pedirNueva(); });
   (async()=>{
     const {data}=await sb.auth.getSession();
-    if(RECUPERO){ if(data.session) pedirNueva(); else pantallaLogin("entrar","El link para cambiar la contraseña ya se usó o venció. Pedí uno nuevo con «Olvidé mi contraseña»."); }
+    if(RECUPERO){ let ok=!!data.session; if(ok){ try{ const r=await sb.auth.getUser(); ok=!!(r.data&&r.data.user); }catch(_){ ok=false; } }
+      if(ok) pedirNueva(); else pantallaLogin("entrar","El link para cambiar la contraseña ya se usó o venció. Pedí uno nuevo con «Olvidé mi contraseña»."); }
     else if(data.session) await entrar(data.session);
     else pantallaLogin("entrar");
   })();
