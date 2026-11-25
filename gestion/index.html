@@ -440,6 +440,8 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
       }catch(err){
         let m=err.message||String(err);
         if(/Invalid login/i.test(m)) m="Email o contraseña incorrectos.";
+        else if(/rate limit|over_email/i.test(m)) m="Ya se mandaron varios emails en la última hora. Esperá un rato (hasta 1 hora) y probá de nuevo.";
+        else if(/Email not confirmed/i.test(m)) m="Falta confirmar el email: abrí el mail que te mandamos y tocá el link.";
         else if(/not confirmed/i.test(m)) m="Todavía no confirmaste tu email: revisá tu casilla.";
         else if(/invitaci|not invited|Database error saving new user/i.test(m)) m="Ese email no tiene una invitación. Pedile a JAI Seguridad que te invite.";
         else if(/already registered/i.test(m)) m="Ese email ya tiene cuenta: ingresá con tu contraseña.";
@@ -837,6 +839,64 @@ async function importarRespaldo(file){
     setBanner(null); toast("Respaldo importado: "+hechos+" registros. Recargando…"); setTimeout(()=>location.reload(),1500);
   });
 }
+/* ---------- Emails desde info@jaiseguridad.com ---------- */
+const MAIL_RE=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const blobB64=b=>new Promise((ok,mal)=>{ const r=new FileReader(); r.onload=()=>ok(String(r.result).split(",")[1]||""); r.onerror=()=>mal(r.error); r.readAsDataURL(b); });
+async function enviarMail(o){
+  const sbc=window.__sb; if(!sbc) throw new Error("Sin conexión con la base de datos.");
+  const {data,error}=await sbc.functions.invoke("enviar-mail",{body:o});
+  if(error){ let m=error.message; try{ const j=await error.context.json(); if(j&&j.error) m=j.error; }catch(_){} throw new Error(m); }
+  if(data&&data.error) throw new Error(data.error);
+  return data;
+}
+// ventana común: destinatario, asunto y mensaje editables
+function modalMail({titulo,para,asunto,texto,adjunto,nota,alEnviar}){
+  modal(`<h2>${esc(titulo)}</h2>
+    <p class="muted" style="margin:0;font-size:13.5px">Se envía desde <b>info@jaiseguridad.com</b>${adjunto?` con el adjunto <b>${esc(adjunto)}</b>`:""}. Las respuestas te llegan a esa casilla.</p>
+    <label class="f">Para<input id="mlPara" type="email" multiple value="${esc(para||"")}" placeholder="cliente@email.com"></label>
+    <label class="f">Asunto<input id="mlAsu" value="${esc(asunto||"")}"></label>
+    <label class="f">Mensaje<textarea id="mlTxt" rows="9">${esc(texto||"")}</textarea></label>
+    ${nota?`<div class="muted" style="font-size:13px">${nota}</div>`:""}
+    <div class="row" style="justify-content:flex-end"><button data-close>Cancelar</button><button class="pri" id="mlOk">Enviar email</button></div>`,
+  m=>{ const b=$("#mlOk",m); $("#mlPara",m).focus();
+    b.onclick=async()=>{ const to=$("#mlPara",m).value.trim();
+      if(!to||to.split(/[,;]/).some(x=>!MAIL_RE.test(x.trim()))){ toast("Revisá el email de destino."); $("#mlPara",m).focus(); return; }
+      b.disabled=true; b.textContent="Enviando…";
+      try{ await alEnviar({to,subject:$("#mlAsu",m).value.trim()||asunto,text:$("#mlTxt",m).value}); closeModal(); }
+      catch(e){ console.error(e); toast("No se pudo enviar: "+(e.message||e)); b.disabled=false; b.textContent="Enviar email"; }
+    }; },560);
+}
+function mailCot(c){
+  if(!(c.items||[]).length){ toast("La cotización no tiene productos."); return; }
+  const cli=S.clientes.find(x=>x.id===c.clienteId)||{}; const nom=(cli.nombre||"").split(" ")[0];
+  const archivo=cotN(c)+" "+(cli.nombre||"").replace(/[\\/:*?"<>|]/g,"").trim()+".pdf";
+  modalMail({titulo:"Enviar "+cotN(c)+" por email",para:cli.email,adjunto:archivo,
+    asunto:"Presupuesto "+cotN(c)+" · "+(S.cfg.empresa||"JAI Seguridad"),
+    texto:`Hola${nom?" "+nom:""}!\n\nTe enviamos adjunto el presupuesto ${cotN(c)} por un total de ${money(c.total)}. Tiene una validez de ${c.validez||S.cfg.validez||7} días.\n\nCualquier consulta, respondé este email o escribinos por WhatsApp${S.cfg.telefono?" al "+S.cfg.telefono:""}.\n\nSaludos,\n${S.cfg.empresa||"JAI Seguridad"}`,
+    alEnviar:async o=>{ toast("Armando el PDF…"); const blob=await pdfCot(c,true); if(!blob) throw new Error("No se pudo generar el PDF.");
+      await enviarMail({...o,attachments:[{filename:archivo,contentBase64:await blobB64(blob),contentType:"application/pdf"}]});
+      const upd={enviadoEmail:new Date().toISOString(),enviadoA:o.to}; if(estEf(c)==="borrador") upd.estado="enviada";
+      await S.db.doc("cotizaciones/"+c.id).update(upd);
+      if(cli.id&&!cli.email&&MAIL_RE.test(o.to)) await S.db.doc("clientes/"+cli.id).update({email:o.to});
+      toast("Email enviado a "+o.to); }});
+}
+function mailPedido(p,k){
+  const P=PROVS[k]; if(!P) return; const campoMail=k==="gelin"?"gelinEmail":"provEmail";
+  modalMail({titulo:"Pedir a "+P.nombre()+" por email",para:S.cfg[campoMail]||"",
+    asunto:"Pedido "+pedNum(p.numero)+" · "+(S.cfg.empresa||"JAI Seguridad"),texto:textoProveedor(p,k),
+    nota:S.cfg[campoMail]?"":"El email del proveedor se guarda para la próxima vez.",
+    alEnviar:async o=>{ await enviarMail(o);
+      if(S.cfg[campoMail]!==o.to) await S.db.doc("config/general").update({[campoMail]:o.to});
+      if(!p[P.campo]) await S.db.doc("pedidos/"+p.id).update({[P.campo]:new Date().toISOString()});
+      const cargo=await cargarCompraAuto(p,k);
+      toast("Pedido enviado a "+P.nombre()+(cargo?" · compra cargada en su cuenta":"")); }});
+}
+document.addEventListener("click",e=>{
+  const a=e.target.closest&&e.target.closest("[data-mailcot],[data-mailped]"); if(!a) return;
+  e.preventDefault(); e.stopPropagation();
+  if(a.dataset.mailcot){ const c=S.cotiz.find(x=>x.id===a.dataset.mailcot); if(c) mailCot(c); }
+  else { const p=S.pedidos.find(x=>x.id===a.dataset.mailped); if(p){ if(a.closest(".modal")) closeModal(); setTimeout(()=>mailPedido(p,a.dataset.prov),a.closest(".modal")?60:0); } }
+},true);
 function rInicio(el){
   const deudores=S.clientes.map(c=>({c,s:saldoCliente(c.id)})).filter(x=>x.s>0.5).sort((a,b)=>b.s-a.s);
   const deuda=deudores.reduce((a,x)=>a+x.s,0);
@@ -1047,11 +1107,11 @@ function textoCot(c){
 async function copiarCot(c){ try{ await navigator.clipboard.writeText(textoCot(c)); toast("Copiado. Pegalo en WhatsApp o en un mail."); }catch(e){ modalTexto("Copiá este texto",textoCot(c)); } }
 let pdfLibs=null;
 function precargarPdf(){ if(!pdfLibs) pdfLibs=loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js").then(()=>loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js")).catch(e=>{ pdfLibs=null; throw e; }); return pdfLibs; }
-async function pdfCot(c){
+async function pdfCot(c,soloBlob){
   // el selector de carpeta tiene que pedirse enseguida después del clic, antes de armar el PDF
   const nombreArchivo=cotN(c)+" "+((S.clientes.find(x=>x.id===c.clienteId)||{}).nombre||"").replace(/[\\/:*?"<>|]/g,"").trim()+".pdf";
   let destino=null;
-  if(S.cfg.pdfElegirCarpeta!==false && typeof window.showSaveFilePicker==="function"){
+  if(!soloBlob && S.cfg.pdfElegirCarpeta!==false && typeof window.showSaveFilePicker==="function"){
     try{ destino=await window.showSaveFilePicker({suggestedName:nombreArchivo,id:"jai-cotizaciones",startIn:"documents",types:[{description:"PDF",accept:{"application/pdf":[".pdf"]}}]}); }
     catch(e){ if(e&&e.name==="AbortError") return; destino=null; }
   }
@@ -1083,6 +1143,7 @@ async function pdfCot(c){
     doc.setFontSize(13); line("TOTAL",money(c.total),true); doc.setFontSize(9); doc.setFont("helvetica","normal");
     const notes=[c.notas,S.cfg.pie].filter(Boolean).join("\n"); if(notes){ doc.text(doc.splitTextToSize(notes,W-28),14,y+4); }
     const blob=doc.output("blob");
+    if(soloBlob) return blob;
     if(destino){ const w=await destino.createWritable(); await w.write(blob); await w.close(); toast("PDF guardado: "+destino.name); return; }
     const dl=await window.claude?.use("downloads");
     if(!dl){ toast("La descarga no está disponible en esta vista."); return; }
@@ -1104,7 +1165,7 @@ function tablaCot(arr,archivo){
     <td>${archivo?pillCot(e):`<select class="sm" data-est="${esc(c.id)}" aria-label="Estado">${Object.entries(ESTADOS_COT).filter(([k])=>k!=="vencida"||e==="vencida").map(([k,x])=>`<option value="${k}" ${k===e?"selected":""}>${x[0]}</option>`).join("")}</select>`}</td>
     <td class="num muted">${c.pedidoId||e==="aceptada"?"—":v?fdate(v.toISOString()):"—"}</td>
     <td class="r num">${money(c.total)}</td>
-    <td class="r" style="white-space:nowrap"><button class="sm" data-act="edit" data-id="${esc(c.id)}">Abrir</button> ${(c.items||[]).length?`<button class="sm" data-act="pdf" data-id="${esc(c.id)}">PDF</button> <button class="sm" data-act="dup" data-id="${esc(c.id)}" title="Hace una copia nueva con los precios de hoy">${archivo?"Reactivar con precios de hoy":"Actualizar precios"}</button>`:""}
+    <td class="r" style="white-space:nowrap"><button class="sm" data-act="edit" data-id="${esc(c.id)}">Abrir</button> ${(c.items||[]).length?`<button class="sm" data-act="pdf" data-id="${esc(c.id)}">PDF</button> <button class="sm" data-mailcot="${esc(c.id)}" title="Enviar el PDF por email desde info@jaiseguridad.com">Email</button> <button class="sm" data-act="dup" data-id="${esc(c.id)}" title="Hace una copia nueva con los precios de hoy">${archivo?"Reactivar con precios de hoy":"Actualizar precios"}</button>`:""}
       ${archivo?`${e==="rechazada"?`<button class="sm" data-act="reab" data-id="${esc(c.id)}">Volver a pendiente</button>`:""} <button class="ghost sm" data-act="del" data-id="${esc(c.id)}" aria-label="Borrar">✕</button>`
         :c.pedidoId?`<span class="pill p-good">Pedido hecho</span>`:`<button class="sm dark" data-act="ped" data-id="${esc(c.id)}">Pasar a pedido</button>`}</td></tr>`; }).join("")}</tbody></table></div>`;
 }
@@ -1423,7 +1484,7 @@ function textoProveedor(p,k){
 }
 function linkProveedor(p,k){ return "https://wa.me/"+waNumero(PROVS[k].wa())+"?text="+encodeURIComponent(textoProveedor(p,k)); }
 function botonProveedor(p,cls){
-  return provsDe(p).map(k=>`<a class="wa ${cls||""}" href="${esc(linkProveedor(p,k))}" target="_blank" rel="noopener" data-wa="${esc(p.id)}" data-prov="${k}">${p[PROVS[k].campo]?"Reenviar a ":"Pedir a "}${esc(PROVS[k].nombre())}</a>`).join(" ");
+  return provsDe(p).map(k=>`<a class="wa ${cls||""}" href="${esc(linkProveedor(p,k))}" target="_blank" rel="noopener" data-wa="${esc(p.id)}" data-prov="${k}">${p[PROVS[k].campo]?"Reenviar a ":"Pedir a "}${esc(PROVS[k].nombre())}</a> <button class="sm ${cls||""}" data-mailped="${esc(p.id)}" data-prov="${k}" title="Enviar el pedido por email">✉ Email</button>`).join(" ");
 }
 // al pedirle la mercadería al proveedor: se marca el pedido como enviado y se carga la compra en su cuenta corriente
 async function cargarCompraAuto(p,prov){
@@ -1450,7 +1511,7 @@ function modalPedidoCreado(p){
         <b>${esc(P.nombre())} · ${n} producto${n===1?"":"s"}</b>
         <textarea rows="6" readonly>${esc(textoProveedor(p,k))}</textarea>
         ${P.wa()?"":`<p class="muted" style="margin:0;font-size:13px">No cargaste su WhatsApp: se abrirá WhatsApp para que elijas el contacto. Cargalo en ${k==="gelin"?`<a href="#gelin">Lista Gelin Group</a>`:`<a href="#lista">Lista del proveedor → Ajustes</a>`}.</p>`}
-        <div class="row" style="justify-content:flex-end"><a class="wa" href="${esc(linkProveedor(p,k))}" target="_blank" rel="noopener" data-wa="${esc(p.id)}" data-prov="${k}">Pedir a ${esc(P.nombre())} por WhatsApp</a></div></div>`; }).join("")+`<div class="row" style="justify-content:flex-end"><button data-close>Cerrar</button></div>`
+        <div class="row" style="justify-content:flex-end"><a class="wa" href="${esc(linkProveedor(p,k))}" target="_blank" rel="noopener" data-wa="${esc(p.id)}" data-prov="${k}">Pedir a ${esc(P.nombre())} por WhatsApp</a> <button data-mailped="${esc(p.id)}" data-prov="${k}">✉ Pedir por email</button></div></div>`; }).join("")+`<div class="row" style="justify-content:flex-end"><button data-close>Cerrar</button></div>`
     :`<p style="margin:0">Este pedido no tiene productos de proveedores.</p><div class="row" style="justify-content:flex-end"><button class="pri" data-close>Listo</button></div>`}`,
   m=>marcarEnviado(m));
 }
