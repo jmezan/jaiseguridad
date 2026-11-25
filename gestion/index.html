@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1d2a55">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1d2a55">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-title" content="JAI Gestión">
 <title>JAI Seguridad · Gestión</title>
@@ -943,6 +945,42 @@ document.addEventListener("click",e=>{
   if(a.dataset.mailcot){ const c=S.cotiz.find(x=>x.id===a.dataset.mailcot); if(c) mailCot(c); }
   else { const p=S.pedidos.find(x=>x.id===a.dataset.mailped); if(p){ if(a.closest(".modal")) closeModal(); setTimeout(()=>mailPedido(p,a.dataset.prov),a.closest(".modal")?60:0); } }
 },true);
+/* ---------- Notificaciones push (instaladores -> dueño) ---------- */
+const VAPID_PUB="BN1pb1rznG8aafVH3hnOdsXPIx1CGsVmwhX7BKvt9wzjYusxGIeS5kJlclOLGN6V_aoorPL8yGTctmrMcPRmgZQ";
+const esIOS=()=>/iPhone|iPad/.test(navigator.userAgent);
+const enPantallaInicio=()=>(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
+const b64u=s=>{ const p="=".repeat((4-s.length%4)%4); const r=atob((s+p).replace(/-/g,"+").replace(/_/g,"/")); return Uint8Array.from(r,c=>c.charCodeAt(0)); };
+async function avisosEstado(){
+  try{ if(!("serviceWorker" in navigator)||!("PushManager" in window)||Notification.permission!=="granted") return false;
+    const r=await navigator.serviceWorker.getRegistration(); return !!(r&&await r.pushManager.getSubscription()); }catch(_){ return false; }
+}
+async function activarAvisos(){
+  if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window)){
+    if(esIOS()&&!enPantallaInicio()){
+      modal(`<h2>Primero agregá el dashboard a tu iPhone</h2>
+        <p style="margin:0">El iPhone solo permite notificaciones si abrís el dashboard desde el ícono de la pantalla de inicio:</p>
+        <ol style="margin:0;padding-left:20px;line-height:1.6"><li>En Safari tocá <b>Compartir</b> (el cuadrado con la flecha).</li><li>Elegí <b>Agregar a pantalla de inicio</b>.</li><li>Abrí <b>JAI Gestión</b> desde ese ícono, ingresá y tocá <b>🔔 Avisos</b> de nuevo.</li></ol>
+        <div class="row" style="justify-content:flex-end"><button class="pri" data-close>Entendido</button></div>`);
+      return;
+    }
+    toast("Este navegador no permite notificaciones."); return;
+  }
+  try{
+    const perm=await Notification.requestPermission();   // primero, para que el iPhone lo acepte con el toque
+    if(perm!=="granted"){ toast(perm==="denied"?"Las notificaciones están bloqueadas: activalas en Ajustes → Notificaciones → JAI Gestión.":"No se activaron las notificaciones."); return; }
+    const reg=await navigator.serviceWorker.register("sw.js"); await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(VAPID_PUB)});
+    const j=sub.toJSON();
+    const disp=(esIOS()?"iPhone":/Android/.test(navigator.userAgent)?"Android":/Mac/.test(navigator.userAgent)?"Mac":"PC")+" · "+new Date().toLocaleDateString("es-AR");
+    const {error}=await window.__sb.from("push_subs").upsert({endpoint:j.endpoint,sub:j,dispositivo:disp}); if(error) throw error;
+    const {data,error:e2}=await window.__sb.functions.invoke("avisos-push",{body:{tipo:"prueba"}}); if(e2) throw e2;
+    const b=$("#btnAvisos"); if(b) b.textContent="🔔 Avisos activos";
+    toast(data&&data.enviados?"¡Listo! Te mandamos una notificación de prueba.":"Avisos activados en este dispositivo.");
+  }catch(e){ console.error(e); toast("No se pudieron activar los avisos: "+(e.message||e)); }
+}
+// mantiene actualizado el receptor de avisos en este dispositivo
+if("serviceWorker" in navigator){ window.addEventListener("load",()=>{ navigator.serviceWorker.getRegistration().then(r=>{ if(r) r.update(); }).catch(()=>{}); }); }
 function rInicio(el){
   const deudores=S.clientes.map(c=>({c,s:saldoCliente(c.id)})).filter(x=>x.s>0.5).sort((a,b)=>b.s-a.s);
   const deuda=deudores.reduce((a,x)=>a+x.s,0);
@@ -954,7 +992,7 @@ function rInicio(el){
   const stale = S.meta ? (Date.now()-new Date(S.meta.actualizado))/864e5 : null;
   el.innerHTML=`
   <div class="head"><div><h1>Inicio</h1><div class="muted">${new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
-  <div class="row"><button id="btnUpd" class="nomovil">Actualizar Todo Seguridad</button><button id="btnUpdG" class="nomovil">Actualizar Gelin</button><a href="#cotizador"><button class="pri">Nueva cotización</button></a><button id="btnNewCli">Nuevo cliente</button><button id="btnResp" title="Descarga un archivo con todos los datos del dashboard">Descargar respaldo</button><button id="btnImpResp" class="nomovil" title="Carga un archivo de respaldo en esta base de datos">Importar respaldo</button><input type="file" id="fImpResp" accept=".json" class="hide"><button id="btnBio" class="ghost hide" title="Ingresar con Face ID en este dispositivo">Face ID</button><button id="btnClave" class="ghost" title="Cambiar tu contraseña">Contraseña</button><button id="btnSalir" class="ghost" title="Cerrar sesión">Salir</button></div></div>
+  <div class="row"><button id="btnUpd" class="nomovil">Actualizar Todo Seguridad</button><button id="btnUpdG" class="nomovil">Actualizar Gelin</button><a href="#cotizador"><button class="pri">Nueva cotización</button></a><button id="btnNewCli">Nuevo cliente</button><button id="btnResp" title="Descarga un archivo con todos los datos del dashboard">Descargar respaldo</button><button id="btnImpResp" class="nomovil" title="Carga un archivo de respaldo en esta base de datos">Importar respaldo</button><input type="file" id="fImpResp" accept=".json" class="hide"><button id="btnAvisos" class="ghost" title="Recibir notificaciones cuando los instaladores cambian el estado de un trabajo">🔔 Avisos</button><button id="btnBio" class="ghost hide" title="Ingresar con Face ID en este dispositivo">Face ID</button><button id="btnClave" class="ghost" title="Cambiar tu contraseña">Contraseña</button><button id="btnSalir" class="ghost" title="Cerrar sesión">Salir</button></div></div>
   ${avisoBanner()}
   ${bannerCambios()}
   ${!S.meta&&S.ready?`<div class="banner warn">Todavía no hay lista de precios cargada. <a href="#lista">Ir a Lista de precios</a></div>`:""}
@@ -974,6 +1012,7 @@ function rInicio(el){
   <div class="panel"><h2>Últimas cotizaciones</h2>${cotActivas().length?tablaCot(cotActivas().slice(0,6)):`<div class="empty">Todavía no hiciste cotizaciones.</div>`}</div>`;
   $("#btnResp",el)&&($("#btnResp",el).onclick=descargarRespaldo);
   $("#btnSalir",el)&&($("#btnSalir",el).onclick=()=>S.user&&S.user.salir());
+  if($("#btnAvisos",el)){ const ba=$("#btnAvisos",el); avisosEstado().then(on=>{ if(on) ba.textContent="🔔 Avisos activos"; }); ba.onclick=activarAvisos; }
   $("#btnClave",el)&&($("#btnClave",el).onclick=()=>S.user&&S.user.cambiarClave&&S.user.cambiarClave());
   if($("#btnBio",el)&&S.user&&S.user.puedeBio&&S.user.puedeBio()){ const bb=$("#btnBio",el); bb.textContent=S.user.nombreBio(); bb.classList.remove("hide");
     bb.onclick=async()=>{ try{ if(await S.user.activarBio()) toast("Listo: la próxima vez entrás con "+S.user.nombreBio()); }catch(e){ toast("No se pudo: "+(e.message||e)); } }; }
