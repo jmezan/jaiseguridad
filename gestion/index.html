@@ -273,6 +273,10 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
 .matElec{display:flex;gap:8px;align-items:center;font-size:14.5px;cursor:pointer;margin-top:4px}
 .matElec input{width:auto;flex:none}
 .compBox{display:flex;flex-direction:column;gap:6px}
+.firmaWrap{position:relative;border:1.5px dashed var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.firmaWrap canvas{display:block;width:100%;height:180px;touch-action:none;cursor:crosshair}
+.firmaHint{position:absolute;left:14px;bottom:10px;color:#9aa3b2;font-size:13px;pointer-events:none;border-top:1px solid #c9ced8;padding-top:4px;width:calc(100% - 28px)}
+.firmaWrap.firmado .firmaHint{opacity:.35}
 .compBtn{display:inline-flex;justify-content:center;align-items:center;padding:12px;border:1.5px dashed var(--line);border-radius:10px;cursor:pointer;font-weight:600;background:var(--bg)}
 </style>
 </head>
@@ -430,7 +434,7 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
     sesion=s;
     try{ const {data}=await sb.rpc("is_admin"); esAdmin=!!data; }catch(e){ esAdmin=false; }
     const lg=document.getElementById("jaiLogin"); if(lg) lg.remove();
-    listo();
+    listoYa=true; listo();
   }
   const conPasskey = () => !!(window.PublicKeyCredential && sb.auth.signInWithPasskey);
   const nombreBio = () => /iPhone|iPad/.test(navigator.userAgent) ? "Face ID" : (/Mac/.test(navigator.userAgent) ? "Touch ID" : "huella o Face ID");
@@ -460,6 +464,47 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
     try{ const {error}=await sb.auth.registerPasskey(); if(error) throw error; try{ localStorage.setItem("jaiBio","1"); localStorage.setItem("jaiBioOfrecido","1"); }catch(_){} return true; }
     catch(err){ console.error(err); throw new Error(msgPasskey(err)); }
   }
+  /* --- bloqueo al abrir la app (dueño, en el celular): pide Face ID o la contraseña --- */
+  const BLOQUEO_SEG = 30;   // si la app estuvo en segundo plano más que esto, se vuelve a bloquear
+  const enCelular = () => /iPhone|iPad|Android/.test(navigator.userAgent) || (window.matchMedia&&matchMedia("(display-mode: standalone)").matches) || navigator.standalone===true;
+  let bloqueada=false, ocultaDesde=0;
+  async function arrancar(s){
+    let adm=false; try{ const {data}=await sb.rpc("is_admin"); adm=!!data; }catch(_){}
+    if(adm && enCelular()) pantallaBloqueo(s); else await entrar(s);
+  }
+  function pantallaBloqueo(s){
+    bloqueada=true;
+    let el=document.getElementById("jaiLogin"); if(!el){ el=document.createElement("div"); el.id="jaiLogin"; document.body.appendChild(el); }
+    const bio=nombreBio(); let tieneBio=false; try{ tieneBio=!!localStorage.getItem("jaiBio"); }catch(_){}
+    const mail=(s&&s.user&&s.user.email)||"";
+    el.innerHTML=`<form class="lgBox" autocomplete="on">
+      <img src="${(typeof LOGO!=="undefined"?LOGO:"")}" alt="JAI Seguridad" class="lgLogo">
+      <h2>🔒 Desbloqueá para entrar</h2>
+      <div class="lgMsg" id="lgBlqMsg" style="${mail?"":"display:none"}">${mail.replace(/</g,"&lt;")}</div>
+      ${conPasskey()?`<button type="button" class="pri" id="lgBlqBio">Desbloquear con ${bio}</button>`:""}
+      <input type="email" name="email" autocomplete="username" value="${mail.replace(/"/g,"&quot;")}" class="hide" readonly>
+      <label>Contraseña<input type="password" id="lgBlqPass" autocomplete="current-password" ${conPasskey()?"":"required"}></label>
+      <button type="submit" class="${conPasskey()?"lgBio":"pri"}">Desbloquear con contraseña</button>
+      <div class="lgLinks"><a href="#" id="lgBlqSalir">Salir / entrar con otro usuario</a></div></form>`;
+    const ok=async ns=>{ bloqueada=false; ocultaDesde=0; if(ns) sesion=ns; if(listoYa) { const lg=document.getElementById("jaiLogin"); if(lg) lg.remove(); } else await entrar(ns||s); };
+    const err=m=>{ const x=el.querySelector("#lgBlqMsg"); x.style.display=""; x.innerHTML="<b>No se pudo:</b> "+String(m).replace(/</g,"&lt;"); };
+    const bb=el.querySelector("#lgBlqBio");
+    if(bb) bb.onclick=async()=>{ bb.disabled=true; bb.textContent="Un momento…";
+      try{ const {data,error}=await sb.auth.signInWithPasskey(); if(error) throw error;
+        if(s&&s.user&&data.user&&data.user.id!==s.user.id){ await sb.auth.signOut(); location.reload(); return; }
+        await ok(data.session); }
+      catch(e){ console.error(e); err(msgPasskey(e)); bb.disabled=false; bb.textContent="Desbloquear con "+bio; } };
+    el.querySelector("form").onsubmit=async e=>{ e.preventDefault(); const pass=el.querySelector("#lgBlqPass").value; if(!pass){ el.querySelector("#lgBlqPass").focus(); return; }
+      const b=el.querySelector("button[type=submit]"); b.disabled=true; b.textContent="Un momento…";
+      try{ const {data,error}=await sb.auth.signInWithPassword({email:mail,password:pass}); if(error) throw error; await ok(data.session); }
+      catch(e2){ err(/Invalid login/i.test(e2.message||"")?"Contraseña incorrecta.":(e2.message||e2)); b.disabled=false; b.textContent="Desbloquear con contraseña"; } };
+    el.querySelector("#lgBlqSalir").onclick=async e=>{ e.preventDefault(); await sb.auth.signOut(); location.reload(); };
+  }
+  let listoYa=false;
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState==="hidden"){ ocultaDesde=Date.now(); return; }
+    if(!bloqueada && listoYa && esAdmin && enCelular() && ocultaDesde && Date.now()-ocultaDesde>BLOQUEO_SEG*1000) pantallaBloqueo(sesion);
+  });
   function pantallaLogin(modo, msg){
     let el=document.getElementById("jaiLogin");
     if(!el){ el=document.createElement("div"); el.id="jaiLogin"; document.body.appendChild(el); }
@@ -512,7 +557,7 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
     const {data}=await sb.auth.getSession();
     if(RECUPERO){ let ok=!!data.session; if(ok){ try{ const r=await sb.auth.getUser(); ok=!!(r.data&&r.data.user); }catch(_){ ok=false; } }
       if(ok) pedirNueva(); else pantallaLogin("entrar","El link para cambiar la contraseña ya se usó o venció. Pedí uno nuevo con «Olvidé mi contraseña»."); }
-    else if(data.session) await entrar(data.session);
+    else if(data.session) await arrancar(data.session);
     else pantallaLogin("entrar");
   })();
 
@@ -1446,6 +1491,26 @@ async function subirComprobante(blob,trabajoId){
   const sbc=window.__sb; const {data:u}=await sbc.auth.getUser(); const uid=u&&u.user&&u.user.id; if(!uid) throw new Error("sesión vencida");
   const path=`${uid}/${trabajoId}-${Date.now().toString(36)}.jpg`;
   const {error}=await sbc.storage.from("comprobantes").upload(path,blob,{contentType:blob.type||"image/jpeg",upsert:false}); if(error) throw error;
+  return path;
+}
+// panel para firmar con el dedo (o el mouse)
+function padFirma(cv){
+  if(!cv) return {vacia:()=>true,limpiar(){},ajustar(){},blob:async()=>null};
+  const ctx=cv.getContext("2d"); let trazos=0, dibujando=false, ult=null;
+  const ajustar=()=>{ const r=cv.getBoundingClientRect(); if(!r.width) return; const dpr=window.devicePixelRatio||1;
+    cv.width=Math.round(r.width*dpr); cv.height=Math.round(r.height*dpr); ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.fillStyle="#fff"; ctx.fillRect(0,0,r.width,r.height); ctx.lineCap="round"; ctx.lineJoin="round"; ctx.strokeStyle="#111827"; ctx.lineWidth=2.4; trazos=0; cv.parentNode.classList.remove("firmado"); };
+  const pos=e=>{ const r=cv.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; };
+  cv.addEventListener("pointerdown",e=>{ e.preventDefault(); cv.setPointerCapture&&cv.setPointerCapture(e.pointerId); dibujando=true; ult=pos(e); ctx.beginPath(); ctx.arc(ult.x,ult.y,1.2,0,Math.PI*2); ctx.fillStyle="#111827"; ctx.fill(); });
+  cv.addEventListener("pointermove",e=>{ if(!dibujando) return; e.preventDefault(); const p=pos(e); ctx.beginPath(); ctx.moveTo(ult.x,ult.y); ctx.lineTo(p.x,p.y); ctx.stroke(); ult=p; trazos++; cv.parentNode.classList.add("firmado"); });
+  const fin=()=>{ dibujando=false; }; cv.addEventListener("pointerup",fin); cv.addEventListener("pointercancel",fin); cv.addEventListener("pointerleave",fin);
+  setTimeout(ajustar,30);
+  return { vacia:()=>trazos<3, limpiar:ajustar, ajustar:()=>setTimeout(ajustar,30), blob:()=>new Promise((ok,mal)=>cv.toBlob(b=>b?ok(b):mal(new Error("sin firma")),"image/png")) };
+}
+async function subirFirma(blob,trabajoId){
+  const sbc=window.__sb; const {data:u}=await sbc.auth.getUser(); const uid=u&&u.user&&u.user.id; if(!uid) throw new Error("sesión vencida");
+  const path=`${uid}/firma-${trabajoId}-${Date.now().toString(36)}.png`;
+  const {error}=await sbc.storage.from("comprobantes").upload(path,blob,{contentType:"image/png",upsert:false}); if(error) throw error;
   return path;
 }
 // abre la foto de un comprobante (link temporal de 10 minutos)
@@ -2571,7 +2636,7 @@ function modalTrabajo(t0){
       const upd=()=>{ $("#tgGcal",m).href=linkGcal(tt()); const tel=String(tt().telefono||"").replace(/\D/g,"");
         $("#tgWa",m).href="https://wa.me/"+waNum(tel)+"?text="+encodeURIComponent(`Hola${tt().clienteId||tt().clienteNombre?" "+agCli(tt()).split(" ")[0]:""}! Te escribimos de ${S.cfg.empresa||"JAI Seguridad"} para confirmar la ${String(tt().tipo||"visita").toLowerCase()} del ${fdia(agInicio(tt()))} a las ${tt().hora} hs${tt().direccion?" en "+tt().direccion:""}. ¡Gracias!`); };
       const drawOT=()=>{ const x=tt(), tecs=tecsDe(x);
-        $("#tgOtBox",m).innerHTML=`<h3>Orden de trabajo ${otNum(x.numero)}</h3>`+repsDe(t.id).filter(rr=>rr.estado).map(rr=>`<div class="banner info" style="flex-direction:column;align-items:flex-start;gap:4px"><span>${pillTec(rr.estado)} <b>${esc(rr.quien||"Instalador")}</b> · ${fdatetime(rr.ts)}</span>${rr.nota?`<span>💬 ${esc(rr.nota)}</span>`:""}${(rr.materiales||[]).length?`<span>🧰 Usó: ${esc(rr.materiales.map(x=>x.item+" "+x.cant+(x.unidad&&x.unidad!=="u"?" "+x.unidad:"")).join(", "))}</span>`:""}${(rr.gastos||[]).length?`<span>Gastó: ${money(rr.gastos.reduce((a,g)=>a+(Number(g.importe)||0),0))} (ya sumado abajo)${rr.gastos.filter(g=>g.comprobante).map(g=>` · <a href="#" data-comp="${esc(g.comprobante)}">📷 Ver comprobante</a>`).join("")}</span>`:""}${Number(rr.cobrado)>0?`<span>Cobró al cliente: ${money(rr.cobrado)}${rr.medio?" ("+esc(rr.medio)+")":""}</span>`:""}</div>`).join("")+(tecs.length?tecs.map(e=>{ const env=(t.otEnviadas||{})[e.id]||(tecs.length===1&&t.otEnviada); return `<a class="wa" data-otwa="${esc(e.id)}" href="${esc(linkOT(x,e))}" target="_blank" rel="noopener" style="justify-content:center">Enviar orden a ${esc(e.nombre)} por WhatsApp</a>
+        $("#tgOtBox",m).innerHTML=`<h3>Orden de trabajo ${otNum(x.numero)}</h3>`+repsDe(t.id).filter(rr=>rr.estado).map(rr=>`<div class="banner info" style="flex-direction:column;align-items:flex-start;gap:4px"><span>${pillTec(rr.estado)} <b>${esc(rr.quien||"Instalador")}</b> · ${fdatetime(rr.ts)}</span>${rr.nota?`<span>💬 ${esc(rr.nota)}</span>`:""}${rr.firma?`<span>✍️ Firmó: <b>${esc(rr.firmaNombre||"el cliente")}</b> · ${fdatetime(rr.firmaTs)} · <a href="#" data-comp="${esc(rr.firma)}">Ver firma</a></span>`:""}${(rr.materiales||[]).length?`<span>🧰 Usó: ${esc(rr.materiales.map(x=>x.item+" "+x.cant+(x.unidad&&x.unidad!=="u"?" "+x.unidad:"")).join(", "))}</span>`:""}${(rr.gastos||[]).length?`<span>Gastó: ${money(rr.gastos.reduce((a,g)=>a+(Number(g.importe)||0),0))} (ya sumado abajo)${rr.gastos.filter(g=>g.comprobante).map(g=>` · <a href="#" data-comp="${esc(g.comprobante)}">📷 Ver comprobante</a>`).join("")}</span>`:""}${Number(rr.cobrado)>0?`<span>Cobró al cliente: ${money(rr.cobrado)}${rr.medio?" ("+esc(rr.medio)+")":""}</span>`:""}</div>`).join("")+(tecs.length?tecs.map(e=>{ const env=(t.otEnviadas||{})[e.id]||(tecs.length===1&&t.otEnviada); return `<a class="wa" data-otwa="${esc(e.id)}" href="${esc(linkOT(x,e))}" target="_blank" rel="noopener" style="justify-content:center">Enviar orden a ${esc(e.nombre)} por WhatsApp</a>
           <div class="muted" style="font-size:12.5px;margin:-2px 0 4px">${e.telefono?"":`${esc(e.nombre)} no tiene teléfono cargado: WhatsApp te va a pedir que elijas el contacto. `}${env?"Enviada: "+fdatetime(env):"Todavía no enviada."}</div>`; }).join("")+`<div class="muted" style="font-size:12.5px">Si cambiaste algo, tocá «Guardar» después de enviarla.</div>
           <div style="margin-top:6px;font-size:13px;font-weight:600">¿Te avisó por WhatsApp? Marcá cómo va:</div>
           <div class="row" style="gap:6px">${Object.entries(ESTADOS_TEC).map(([k,v])=>`<button type="button" class="sm ${t.estadoTec===k?"pri":""}" data-mest="${k}">${v[0]}</button>`).join("")}</div>
@@ -2846,6 +2911,15 @@ function modalOT(id){
           <input type="file" id="otElecF" accept="image/*" capture="environment" class="hide">
           <div id="otElecFv" class="muted" style="font-size:13px">${elecR0&&elecR0.comprobante?"✅ Comprobante cargado":"Obligatorio: sacale una foto al ticket o factura."}</div></div></div>
     </div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:8px" id="otFirmaP"><h3>✍️ Conformidad del cliente</h3>
+      ${r0.firma?`<div id="otFirmaOk" class="banner info" style="justify-content:space-between;gap:8px"><span>✅ Firmado por <b>${esc(r0.firmaNombre||"el cliente")}</b> · ${fdatetime(r0.firmaTs)}</span><button type="button" class="sm" id="otFirmaRe">Volver a firmar</button></div>`:""}
+      <div id="otFirmaBox" class="${r0.firma?"hide":""}" style="display:flex;flex-direction:column;gap:8px">
+        <div class="muted" style="font-size:13.5px">Cuando termines, pasale el teléfono al cliente para que firme con el dedo.</div>
+        <div class="firmaWrap"><canvas id="otFirma"></canvas><span class="firmaHint">Firme aquí</span></div>
+        <div class="row" style="justify-content:space-between;gap:8px"><span class="muted" style="font-size:12.5px">${esc(S.cfg.empresa||"JAI Seguridad")} · conformidad con el trabajo realizado</span><button type="button" class="sm ghost" id="otFirmaClr">Borrar firma</button></div>
+        <label class="f">Aclaración (nombre de quien firma)<input id="otFirmaN" value="${esc(r0.firmaNombre||"")}" placeholder="Nombre y apellido" autocomplete="off"></label>
+      </div>
+    </div>
     <div class="panel" style="display:flex;flex-direction:column;gap:8px"><h3>¿Le cobraste al cliente?</h3>
       <div class="fgrid fg2"><label class="f">Importe cobrado<input type="number" id="otCob" inputmode="numeric" value="${Number(r0.cobrado)||""}" placeholder="0"></label>
       <label class="f">Medio<select id="otMed">${["","Efectivo","Transferencia","Mercado Pago"].map(x=>`<option value="${x}" ${x===(r0.medio||"")?"selected":""}>${x||"—"}</option>`).join("")}</select></label></div></div>
@@ -2860,6 +2934,9 @@ function modalOT(id){
     $("#otMok",m).onclick=()=>{ const d=$("#otMd",m).value.trim(), c=Number($("#otMc",m).value)||1; if(!d){ toast("Escribí qué material usaste."); $("#otMd",m).focus(); return; }
       otrosMat.push({k:"otro",item:d,cant:c,unidad:"u"}); $("#otMd",m).value=""; $("#otMc",m).value=""; drawM(); };
     let fotoComp=null;
+    const pad=padFirma($("#otFirma",m));
+    $("#otFirmaClr",m).onclick=()=>pad.limpiar();
+    if($("#otFirmaRe",m)) $("#otFirmaRe",m).onclick=()=>{ $("#otFirmaOk",m).remove(); $("#otFirmaBox",m).classList.remove("hide"); pad.ajustar(); };
     $("#otElecF",m).onchange=async e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; $("#otElecFv",m).textContent="Preparando la foto…";
       try{ fotoComp=await achicarFoto(f); $("#otElecFv",m).innerHTML=`<img src="${URL.createObjectURL(fotoComp)}" alt="Comprobante" style="max-width:140px;max-height:140px;border-radius:8px;border:1px solid var(--line);display:block;margin-top:4px"> Lista para subir`; }
       catch(err){ console.error(err); fotoComp=null; $("#otElecFv",m).textContent="No se pudo leer la foto. Probá de nuevo."; } };
@@ -2885,7 +2962,16 @@ function modalOT(id){
           b.disabled=false; b.textContent="Guardar"; }
         const det=$("#otElecD",m).value.trim(); const mismo=elecR0&&elecR0.importe===imp&&elecR0.comprobante===comp;
         gs=gs.concat([{id:(mismo&&elecR0.id)||("el"+id.slice(0,6)+Date.now().toString(36)),fecha:new Date().toISOString(),cat:"Materiales",detalle:"Materiales eléctricos"+(det?": "+det:""),importe:imp,elec:true,comprobante:comp}]); }
-      const ok=await guardarParte(p=>{ p.trabajos[id]={estado:est,ts:new Date().toISOString(),nota,gastos:gs,materiales,cobrado:cob,medio:$("#otMed",m).value}; },"Guardado");
+      // firma del cliente: se pide al marcar Terminado
+      let firma=r0.firma||"", firmaNombre=r0.firmaNombre||"", firmaTs=r0.firmaTs||"";
+      const firmoAhora=!pad.vacia();
+      if(firmoAhora){ const nom=$("#otFirmaN",m).value.trim(); if(!nom){ toast("Falta la aclaración: el nombre de quien firmó."); $("#otFirmaN",m).focus(); return; }
+        const b=$("#otOk",m); b.disabled=true; b.textContent="Guardando firma…";
+        try{ firma=await subirFirma(await pad.blob(),id); firmaNombre=nom; firmaTs=new Date().toISOString(); }
+        catch(err){ console.error(err); b.disabled=false; b.textContent="Guardar"; toast("No se pudo guardar la firma: "+(err.message||err)+". Revisá la señal y probá de nuevo."); return; }
+        b.disabled=false; b.textContent="Guardar"; }
+      else if(est==="realizado"&&!firma&&!window.confirm("El cliente todavía no firmó la conformidad. ¿Guardar igual sin firma?")){ $("#otFirmaP",m).scrollIntoView({behavior:"smooth",block:"center"}); return; }
+      const ok=await guardarParte(p=>{ p.trabajos[id]={estado:est,ts:new Date().toISOString(),nota,gastos:gs,materiales,cobrado:cob,medio:$("#otMed",m).value,...(firma?{firma,firmaNombre,firmaTs}:{})}; },"Guardado");
       if(ok) closeModal();
     };
   },620);
