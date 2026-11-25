@@ -259,6 +259,7 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
 #jaiLogin button{padding:12px;font-size:16px;border-radius:10px;border:0;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}
 #jaiLogin button:disabled{opacity:.6}
 #jaiLogin .lgLinks{display:flex;flex-direction:column;gap:8px;align-items:center;font-size:14px}
+#jaiLogin .lgBio{background:#fff;color:#1a2238;border:1.5px solid #1a2238}
 #jaiLogin .lgMsg{background:#eef4ff;border-radius:9px;padding:10px 12px;font-size:14px;line-height:1.4}
 </style>
 </head>
@@ -320,7 +321,7 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
   const CFG = window.JAI_SUPABASE || {};
   // supabase-js borra el #... del link al iniciar: se revisa antes si vino del email de "olvidé mi contraseña"
   const RECUPERO = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search);
-  const sb = window.supabase.createClient(CFG.url, CFG.anonKey, { auth:{ persistSession:true, autoRefreshToken:true } });
+  const sb = window.supabase.createClient(CFG.url, CFG.anonKey, { auth:{ persistSession:true, autoRefreshToken:true, experimental:{ passkey:true } } });
   window.__sb = sb;
   const rid = () => { const a="abcdefghijklmnopqrstuvwxyz0123456789"; let s=""; const r=crypto.getRandomValues(new Uint8Array(20)); for(const x of r) s+=a[x%36]; return s; };
   const clone = v => v==null?v:JSON.parse(JSON.stringify(v));
@@ -403,7 +404,8 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
     id: async()=> sesion?sesion.user.id:null,
     email: ()=> sesion?sesion.user.email:"",
     salir: async()=>{ await sb.auth.signOut(); location.reload(); },
-    cambiarClave: ()=>pantallaLogin("nueva","Escribí tu contraseña nueva.")
+    cambiarClave: ()=>pantallaLogin("nueva","Escribí tu contraseña nueva."),
+    puedeBio: ()=>conPasskey(), nombreBio: ()=>nombreBio(), activarBio
   };
 
   /* --- descargas --- */
@@ -417,6 +419,34 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
     const lg=document.getElementById("jaiLogin"); if(lg) lg.remove();
     listo();
   }
+  const conPasskey = () => !!(window.PublicKeyCredential && sb.auth.signInWithPasskey);
+  const nombreBio = () => /iPhone|iPad/.test(navigator.userAgent) ? "Face ID" : (/Mac/.test(navigator.userAgent) ? "Touch ID" : "huella o Face ID");
+  const msgPasskey = err => { const c=(err&&(err.code||err.name))||"", m=(err&&err.message)||String(err);
+    if(/NotAllowed|AbortError|cancel/i.test(c+m)) return "Se canceló. Probá de nuevo cuando quieras.";
+    if(/passkey_disabled/i.test(c+m)) return "El ingreso con "+nombreBio()+" todavía no está activado en Supabase (Authentication → Passkeys).";
+    if(/credential_not_found/i.test(c+m)) return "Este "+nombreBio()+" no está registrado. Ingresá con tu email y contraseña y activalo de nuevo.";
+    if(/credential_exists|InvalidState/i.test(c+m)) return "Este dispositivo ya está registrado.";
+    return m; };
+  // después de entrar con contraseña: ofrece activar Face ID una vez por dispositivo
+  function ofrecerBio(s){
+    let el=document.getElementById("jaiLogin"); if(!el){ el=document.createElement("div"); el.id="jaiLogin"; document.body.appendChild(el); }
+    const bio=nombreBio();
+    el.innerHTML=`<div class="lgBox">
+      <img src="${(typeof LOGO!=="undefined"?LOGO:"")}" alt="JAI Seguridad" class="lgLogo">
+      <h2>¿Entrar con ${bio}?</h2>
+      <div class="lgMsg">La próxima vez vas a poder ingresar en este dispositivo con ${bio}, sin escribir la contraseña.</div>
+      <button class="pri" type="button" id="lgBioSi">Activar ${bio}</button>
+      <div class="lgLinks"><a href="#" id="lgBioNo">Ahora no</a></div></div>`;
+    el.querySelector("#lgBioNo").onclick=e=>{ e.preventDefault(); try{ localStorage.setItem("jaiBioOfrecido","1"); }catch(_){} entrar(s); };
+    el.querySelector("#lgBioSi").onclick=async()=>{ const b=el.querySelector("#lgBioSi"); b.disabled=true; b.textContent="Un momento…";
+      try{ const {error}=await sb.auth.registerPasskey(); if(error) throw error; try{ localStorage.setItem("jaiBioOfrecido","1"); localStorage.setItem("jaiBio","1"); }catch(_){} entrar(s); }
+      catch(err){ console.error(err); const m=msgPasskey(err); el.querySelector(".lgMsg").innerHTML="<b>No se pudo:</b> "+m.replace(/</g,"&lt;"); b.disabled=false; b.textContent="Probar de nuevo"; } };
+  }
+  async function activarBio(){
+    if(!conPasskey()){ alert("Este navegador no permite ingresar con "+nombreBio()+"."); return false; }
+    try{ const {error}=await sb.auth.registerPasskey(); if(error) throw error; try{ localStorage.setItem("jaiBio","1"); localStorage.setItem("jaiBioOfrecido","1"); }catch(_){} return true; }
+    catch(err){ console.error(err); throw new Error(msgPasskey(err)); }
+  }
   function pantallaLogin(modo, msg){
     let el=document.getElementById("jaiLogin");
     if(!el){ el=document.createElement("div"); el.id="jaiLogin"; document.body.appendChild(el); }
@@ -428,16 +458,22 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
       ${modo!=="nueva"?`<label>Email<input type="email" name="email" id="lgMail" autocomplete="username" required></label>`:""}
       ${modo!=="olvido"?`<label>${modo==="nueva"?"Contraseña nueva":"Contraseña"}<input type="password" id="lgPass" autocomplete="${modo==="entrar"?"current-password":"new-password"}" minlength="6" required></label>`:""}
       <button class="pri" type="submit">${t}</button>
+      ${modo==="entrar"&&conPasskey()?`<button type="button" id="lgBio" class="lgBio">Ingresar con ${nombreBio()}</button>`:""}
       <div class="lgLinks">
         ${modo==="entrar"?`<a href="#" data-m="olvido">Olvidé mi contraseña</a><a href="#" data-m="registro">Soy instalador y me invitaron</a>`:""}
         ${modo==="registro"||modo==="olvido"?`<a href="#" data-m="entrar">Ya tengo cuenta: ingresar</a>`:""}
       </div></form>`;
     el.querySelectorAll("[data-m]").forEach(a=>a.onclick=e=>{ e.preventDefault(); pantallaLogin(a.dataset.m); });
+    const bb=el.querySelector("#lgBio"); if(bb) bb.onclick=async()=>{ bb.disabled=true; bb.textContent="Un momento…";
+      try{ const {data,error}=await sb.auth.signInWithPasskey(); if(error) throw error; await entrar(data.session); }
+      catch(err){ console.error(err); pantallaLogin("entrar","<b>No se pudo:</b> "+msgPasskey(err).replace(/</g,"&lt;")); } };
     el.querySelector("form").onsubmit=async e=>{
       e.preventDefault(); const b=el.querySelector("button[type=submit]"); b.disabled=true; b.textContent="Un momento…";
       const mail=(el.querySelector("#lgMail")||{}).value, pass=(el.querySelector("#lgPass")||{}).value;
       try{
-        if(modo==="entrar"){ const {data,error}=await sb.auth.signInWithPassword({email:mail,password:pass}); if(error) throw error; await entrar(data.session); }
+        if(modo==="entrar"){ const {data,error}=await sb.auth.signInWithPassword({email:mail,password:pass}); if(error) throw error;
+          let ya=false; try{ ya=!!localStorage.getItem("jaiBioOfrecido"); }catch(_){}
+          if(conPasskey() && !ya && /iPhone|iPad|Mac|Android/.test(navigator.userAgent)) ofrecerBio(data.session); else await entrar(data.session); }
         else if(modo==="registro"){ const {data,error}=await sb.auth.signUp({email:mail,password:pass,options:{emailRedirectTo:location.href.split("#")[0]}}); if(error) throw error;
           if(data.session) await entrar(data.session); else pantallaLogin("entrar","Te mandamos un email para confirmar la cuenta. Abrilo y después ingresá acá."); }
         else if(modo==="olvido"){ const {error}=await sb.auth.resetPasswordForEmail(mail,{redirectTo:location.href.split("#")[0]}); if(error) throw error; pantallaLogin("entrar","Si el email está registrado, te llega un link para cambiar la contraseña."); }
@@ -918,7 +954,7 @@ function rInicio(el){
   const stale = S.meta ? (Date.now()-new Date(S.meta.actualizado))/864e5 : null;
   el.innerHTML=`
   <div class="head"><div><h1>Inicio</h1><div class="muted">${new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
-  <div class="row"><button id="btnUpd" class="nomovil">Actualizar Todo Seguridad</button><button id="btnUpdG" class="nomovil">Actualizar Gelin</button><a href="#cotizador"><button class="pri">Nueva cotización</button></a><button id="btnNewCli">Nuevo cliente</button><button id="btnResp" title="Descarga un archivo con todos los datos del dashboard">Descargar respaldo</button><button id="btnImpResp" class="nomovil" title="Carga un archivo de respaldo en esta base de datos">Importar respaldo</button><input type="file" id="fImpResp" accept=".json" class="hide"><button id="btnClave" class="ghost" title="Cambiar tu contraseña">Contraseña</button><button id="btnSalir" class="ghost" title="Cerrar sesión">Salir</button></div></div>
+  <div class="row"><button id="btnUpd" class="nomovil">Actualizar Todo Seguridad</button><button id="btnUpdG" class="nomovil">Actualizar Gelin</button><a href="#cotizador"><button class="pri">Nueva cotización</button></a><button id="btnNewCli">Nuevo cliente</button><button id="btnResp" title="Descarga un archivo con todos los datos del dashboard">Descargar respaldo</button><button id="btnImpResp" class="nomovil" title="Carga un archivo de respaldo en esta base de datos">Importar respaldo</button><input type="file" id="fImpResp" accept=".json" class="hide"><button id="btnBio" class="ghost hide" title="Ingresar con Face ID en este dispositivo">Face ID</button><button id="btnClave" class="ghost" title="Cambiar tu contraseña">Contraseña</button><button id="btnSalir" class="ghost" title="Cerrar sesión">Salir</button></div></div>
   ${avisoBanner()}
   ${bannerCambios()}
   ${!S.meta&&S.ready?`<div class="banner warn">Todavía no hay lista de precios cargada. <a href="#lista">Ir a Lista de precios</a></div>`:""}
@@ -939,6 +975,8 @@ function rInicio(el){
   $("#btnResp",el)&&($("#btnResp",el).onclick=descargarRespaldo);
   $("#btnSalir",el)&&($("#btnSalir",el).onclick=()=>S.user&&S.user.salir());
   $("#btnClave",el)&&($("#btnClave",el).onclick=()=>S.user&&S.user.cambiarClave&&S.user.cambiarClave());
+  if($("#btnBio",el)&&S.user&&S.user.puedeBio&&S.user.puedeBio()){ const bb=$("#btnBio",el); bb.textContent=S.user.nombreBio(); bb.classList.remove("hide");
+    bb.onclick=async()=>{ try{ if(await S.user.activarBio()) toast("Listo: la próxima vez entrás con "+S.user.nombreBio()); }catch(e){ toast("No se pudo: "+(e.message||e)); } }; }
   $("#btnImpResp",el)&&($("#btnImpResp",el).onclick=()=>$("#fImpResp",el).click());
   $("#fImpResp",el)&&($("#fImpResp",el).onchange=e=>{ const f=e.target.files[0]; if(f) importarRespaldo(f); e.target.value=""; });
   $("#btnNewCli",el).onclick=()=>modalCliente();
