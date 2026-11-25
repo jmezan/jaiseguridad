@@ -316,6 +316,8 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
    Todos los datos viven en la tabla public.docs (col, id, data jsonb). */
 (function(){
   const CFG = window.JAI_SUPABASE || {};
+  // supabase-js borra el #... del link al iniciar: se revisa antes si vino del email de "olvidé mi contraseña"
+  const RECUPERO = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search);
   const sb = window.supabase.createClient(CFG.url, CFG.anonKey, { auth:{ persistSession:true, autoRefreshToken:true } });
   window.__sb = sb;
   const rid = () => { const a="abcdefghijklmnopqrstuvwxyz0123456789"; let s=""; const r=crypto.getRandomValues(new Uint8Array(20)); for(const x of r) s+=a[x%36]; return s; };
@@ -398,7 +400,8 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
     can: async(k)=> k==="data.write" ? true : null,
     id: async()=> sesion?sesion.user.id:null,
     email: ()=> sesion?sesion.user.email:"",
-    salir: async()=>{ await sb.auth.signOut(); location.reload(); }
+    salir: async()=>{ await sb.auth.signOut(); location.reload(); },
+    cambiarClave: ()=>pantallaLogin("nueva","Escribí tu contraseña nueva.")
   };
 
   /* --- descargas --- */
@@ -450,11 +453,14 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
     };
     setTimeout(()=>{ const f=el.querySelector("input"); f&&f.focus(); },50);
   }
-  sb.auth.onAuthStateChange((ev,s)=>{ if(ev==="PASSWORD_RECOVERY") pantallaLogin("nueva"); });
+  let pidioNueva=false;
+  const pedirNueva=()=>{ if(pidioNueva) return; pidioNueva=true; pantallaLogin("nueva","Elegí tu contraseña nueva para terminar."); };
+  sb.auth.onAuthStateChange((ev,s)=>{ if(ev==="PASSWORD_RECOVERY") pedirNueva(); });
   (async()=>{
     const {data}=await sb.auth.getSession();
-    if(data.session && !/type=recovery/.test(location.hash)) await entrar(data.session);
-    else if(!/type=recovery/.test(location.hash)) pantallaLogin("entrar");
+    if(RECUPERO){ if(data.session) pedirNueva(); else pantallaLogin("entrar","El link para cambiar la contraseña ya se usó o venció. Pedí uno nuevo con «Olvidé mi contraseña»."); }
+    else if(data.session) await entrar(data.session);
+    else pantallaLogin("entrar");
   })();
 
   /* --- lo que usa el dashboard --- */
@@ -908,7 +914,7 @@ function rInicio(el){
   const stale = S.meta ? (Date.now()-new Date(S.meta.actualizado))/864e5 : null;
   el.innerHTML=`
   <div class="head"><div><h1>Inicio</h1><div class="muted">${new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
-  <div class="row"><button id="btnUpd" class="nomovil">Actualizar Todo Seguridad</button><button id="btnUpdG" class="nomovil">Actualizar Gelin</button><a href="#cotizador"><button class="pri">Nueva cotización</button></a><button id="btnNewCli">Nuevo cliente</button><button id="btnResp" title="Descarga un archivo con todos los datos del dashboard">Descargar respaldo</button><button id="btnImpResp" class="nomovil" title="Carga un archivo de respaldo en esta base de datos">Importar respaldo</button><input type="file" id="fImpResp" accept=".json" class="hide"><button id="btnSalir" class="ghost" title="Cerrar sesión">Salir</button></div></div>
+  <div class="row"><button id="btnUpd" class="nomovil">Actualizar Todo Seguridad</button><button id="btnUpdG" class="nomovil">Actualizar Gelin</button><a href="#cotizador"><button class="pri">Nueva cotización</button></a><button id="btnNewCli">Nuevo cliente</button><button id="btnResp" title="Descarga un archivo con todos los datos del dashboard">Descargar respaldo</button><button id="btnImpResp" class="nomovil" title="Carga un archivo de respaldo en esta base de datos">Importar respaldo</button><input type="file" id="fImpResp" accept=".json" class="hide"><button id="btnClave" class="ghost" title="Cambiar tu contraseña">Contraseña</button><button id="btnSalir" class="ghost" title="Cerrar sesión">Salir</button></div></div>
   ${avisoBanner()}
   ${bannerCambios()}
   ${!S.meta&&S.ready?`<div class="banner warn">Todavía no hay lista de precios cargada. <a href="#lista">Ir a Lista de precios</a></div>`:""}
@@ -928,6 +934,7 @@ function rInicio(el){
   <div class="panel"><h2>Últimas cotizaciones</h2>${cotActivas().length?tablaCot(cotActivas().slice(0,6)):`<div class="empty">Todavía no hiciste cotizaciones.</div>`}</div>`;
   $("#btnResp",el)&&($("#btnResp",el).onclick=descargarRespaldo);
   $("#btnSalir",el)&&($("#btnSalir",el).onclick=()=>S.user&&S.user.salir());
+  $("#btnClave",el)&&($("#btnClave",el).onclick=()=>S.user&&S.user.cambiarClave&&S.user.cambiarClave());
   $("#btnImpResp",el)&&($("#btnImpResp",el).onclick=()=>$("#fImpResp",el).click());
   $("#fImpResp",el)&&($("#fImpResp",el).onchange=e=>{ const f=e.target.files[0]; if(f) importarRespaldo(f); e.target.value=""; });
   $("#btnNewCli",el).onclick=()=>modalCliente();
