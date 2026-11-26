@@ -1017,7 +1017,7 @@ const VAPID_PUB="BN1pb1rznG8aafVH3hnOdsXPIx1CGsVmwhX7BKvt9wzjYusxGIeS5kJlclOLGN6
 const esIOS=()=>/iPhone|iPad/.test(navigator.userAgent);
 const enPantallaInicio=()=>(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
 const b64u=s=>{ const p="=".repeat((4-s.length%4)%4); const r=atob((s+p).replace(/-/g,"+").replace(/_/g,"/")); return Uint8Array.from(r,c=>c.charCodeAt(0)); };
-async function avisosEstado(){
+async function avisosEstado(){ asegurarAvisos();
   try{ if(!("serviceWorker" in navigator)||!("PushManager" in window)||Notification.permission!=="granted") return false;
     const r=await navigator.serviceWorker.getRegistration(); return !!(r&&await r.pushManager.getSubscription()); }catch(_){ return false; }
 }
@@ -1057,6 +1057,18 @@ function bannerAvisosTec(el){
     h.insertAdjacentHTML("afterend",`<div class="panel" id="tecAvisoBan" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"><b>🔔 Enterate al instante de tus trabajos</b><span class="muted" style="font-size:13.5px">Activá los avisos y te llega una notificación cuando te asignen un trabajo nuevo o cambie el horario.</span><button class="pri" id="tecAvisoBtn">Activar avisos</button></div>`);
     el.querySelector("#tecAvisoBtn").onclick=activarAvisos; });
 }
+// cada vez que se abre la app: si los avisos estaban permitidos, renueva/registra la suscripción en silencio
+let _avisosRevisados=false;
+async function asegurarAvisos(){
+  if(_avisosRevisados) return; _avisosRevisados=true;
+  try{ if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window)||Notification.permission!=="granted") return;
+    const reg=await navigator.serviceWorker.register("sw.js"); await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u(VAPID_PUB)});
+    const j=sub.toJSON(); const disp=(esIOS()?"iPhone":/Android/.test(navigator.userAgent)?"Android":/Mac/.test(navigator.userAgent)?"Mac":"PC")+" · "+new Date().toLocaleDateString("es-AR");
+    await window.__sb.from("push_subs").upsert({endpoint:j.endpoint,sub:j,dispositivo:disp});
+  }catch(e){ console.warn("avisos",e); }
+}
 function rInicio(el){
   const deudores=S.clientes.map(c=>({c,s:saldoCliente(c.id)})).filter(x=>x.s>0.5).sort((a,b)=>b.s-a.s);
   const deuda=deudores.reduce((a,x)=>a+x.s,0);
@@ -1068,7 +1080,7 @@ function rInicio(el){
   const stale = S.meta ? (Date.now()-new Date(S.meta.actualizado))/864e5 : null;
   el.innerHTML=`
   <div class="head"><div><h1>Inicio</h1><div class="muted">${new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
-  <div class="row"><button id="btnUpd" class="nomovil">Actualizar Todo Seguridad</button><button id="btnUpdG" class="nomovil">Actualizar Gelin</button><a href="#cotizador"><button class="pri">Nueva cotización</button></a><button id="btnNewCli">Nuevo cliente</button><button id="btnResp" title="Descarga un archivo con todos los datos del dashboard">Descargar respaldo</button><button id="btnImpResp" class="nomovil" title="Carga un archivo de respaldo en esta base de datos">Importar respaldo</button><input type="file" id="fImpResp" accept=".json" class="hide"><button id="btnAvisos" class="ghost" title="Recibir notificaciones cuando los instaladores cambian el estado de un trabajo">🔔 Avisos</button><button id="btnBio" class="ghost hide" title="Ingresar con Face ID en este dispositivo">Face ID</button><button id="btnClave" class="ghost" title="Cambiar tu contraseña">Contraseña</button><button id="btnSalir" class="ghost" title="Cerrar sesión">Salir</button></div></div>
+  <div class="row"><button id="btnUpd" class="nomovil">Actualizar Todo Seguridad</button><button id="btnUpdG" class="nomovil">Actualizar Gelin</button><a href="#cotizador"><button class="pri">Nueva cotización</button></a><button id="btnNewCli">Nuevo cliente</button><button id="btnResp" title="Descarga un archivo con todos los datos del dashboard">Descargar respaldo</button><button id="btnImpResp" class="nomovil" title="Carga un archivo de respaldo en esta base de datos">Importar respaldo</button><input type="file" id="fImpResp" accept=".json" class="hide"><a id="btnPanel" class="btn ghost" href="https://www.jaiseguridad.com/panel/" target="_blank" rel="noopener" title="Abrir el panel: rostros, cámaras, bot y solicitudes">🌐 Panel</a><button id="btnAvisos" class="ghost" title="Recibir notificaciones cuando los instaladores cambian el estado de un trabajo">🔔 Avisos</button><button id="btnBio" class="ghost hide" title="Ingresar con Face ID en este dispositivo">Face ID</button><button id="btnClave" class="ghost" title="Cambiar tu contraseña">Contraseña</button><button id="btnSalir" class="ghost" title="Cerrar sesión">Salir</button></div></div>
   ${avisoBanner()}
   ${bannerCambios()}
   ${!S.meta&&S.ready?`<div class="banner warn">Todavía no hay lista de precios cargada. <a href="#lista">Ir a Lista de precios</a></div>`:""}
@@ -2526,6 +2538,7 @@ function rAgenda(el){
             <div class="muted" style="font-size:13px">${t.numero?`<span class="mono">${otNum(t.numero)}</span> · `:""}${esc(t.tipo||"Service")}${t.direccion?" · "+esc(t.direccion):""}${t.direccion||t.mapsUrl?` · <a href="${esc(linkMaps(t.direccion,t.mapsUrl))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📍 Maps</a>`:""}</div>
             ${t.tecnico?`<div style="font-size:12.5px;margin-top:3px;display:flex;flex-wrap:wrap;gap:4px">${(tecsDe(t).length?tecsDe(t):[{id:"",nombre:t.tecnico}]).map(e=>{ const r=repsDe(t.id).find(x=>x.tecnicoId===e.id); const env=(t.otEnviadas||{})[e.id]||(tecIds(t).length===1&&t.otEnviada);
               return `<span class="pill p-info">🔧 ${esc(e.nombre)}</span>${r&&r.estado?pillTec(r.estado,hhmm(r.ts)):env?`<span class="pill p-good">Orden enviada</span>`:t.estado==="pendiente"?`<span class="pill p-mut">Sin enviar</span>`:""}`; }).join(`<span style="width:6px"></span>`)}${!repsDe(t.id).length&&t.estadoTec?pillTec(t.estadoTec,hhmm(t.estadoTecTs)):""}</div>`:""}
+            ${t.origen==="panel"?`<span class="pill p-info" style="margin-top:4px;display:inline-block">🌐 Solicitud web${t.ticket?" #"+esc(String(t.ticket)):""}${t.urgente?" · ⚠️ Urgente":""}</span>`:""}
             ${(()=>{ const h=hiloDe(t); if(!h.length) return ""; const u=h[h.length-1]; return `<div class="cmtPrev">💬 <b>${h.length}</b> · ${esc(u.autor||"")}: ${esc(String(u.texto||"").slice(0,90))}${String(u.texto||"").length>90?"…":""}</div>`; })()}
             ${t.descripcion?`<div style="font-size:13.5px;margin-top:2px;overflow-wrap:anywhere">${esc(String(t.descripcion).slice(0,140))}</div>`:""}
             ${t.estado==="realizado"?`<div style="font-size:13px;margin-top:4px">Cobrado <b class="num" style="color:var(--good)">${money(t.cobrado)}</b> · Gastos <b class="num">${money(agGastos(t))}</b> · Ganancia <b class="num" style="color:${(Number(t.cobrado)||0)-agGastos(t)<0?"var(--bad)":"var(--good)"}">${money((Number(t.cobrado)||0)-agGastos(t))}</b></div>`:Number(t.precio)>0?`<div class="muted" style="font-size:13px;margin-top:4px">A cobrar: ${money(t.precio)}</div>`:""}
