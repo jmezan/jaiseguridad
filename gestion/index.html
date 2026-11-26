@@ -596,7 +596,7 @@ const fmt = new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maxim
 const money = n => fmt.format(Math.round(Number(n)||0));
 const fmtUsd = n => (Number(n)||0).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2});
 const fdate = iso => { if(!iso) return "—"; const d=new Date(iso); return isNaN(d)? "—" : d.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"}); };
-const fdatetime = iso => { if(!iso) return "—"; const d=new Date(iso); return isNaN(d)? "—" : d.toLocaleString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}); };
+const fdatetime = iso => { if(!iso) return "—"; const d=new Date(iso); if(isNaN(d)) return "—"; const p=n=>String(n).padStart(2,"0"); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 const today = () => new Date().toISOString().slice(0,10);
 const esMovil = () => window.matchMedia("(max-width:700px)").matches;
 const norm = s => String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"");
@@ -1079,7 +1079,7 @@ function rInicio(el){
   const cobrosMes=S.movs.filter(m=>m.tipo==="pago"&&String(m.fecha).startsWith(mes)).reduce((a,m)=>a+(m.importe||0),0);
   const stale = S.meta ? (Date.now()-new Date(S.meta.actualizado))/864e5 : null;
   el.innerHTML=`
-  <div class="head"><div><h1>Inicio</h1><div class="muted">${new Date().toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div></div>
+  <div class="head"><div><h1>Inicio</h1><div class="muted">${fdia(new Date()).replace(/^./,c=>c.toUpperCase())}</div></div>
   <div class="row"><button id="btnUpd" class="nomovil">Actualizar Todo Seguridad</button><button id="btnUpdG" class="nomovil">Actualizar Gelin</button><a href="#cotizador"><button class="pri">Nueva cotización</button></a><button id="btnNewCli">Nuevo cliente</button><button id="btnResp" title="Descarga un archivo con todos los datos del dashboard">Descargar respaldo</button><button id="btnImpResp" class="nomovil" title="Carga un archivo de respaldo en esta base de datos">Importar respaldo</button><input type="file" id="fImpResp" accept=".json" class="hide"><a id="btnPanel" class="btn ghost" href="https://www.jaiseguridad.com/panel/" target="_blank" rel="noopener" title="Abrir el panel: rostros, cámaras, bot y solicitudes">🌐 Panel</a><button id="btnAvisos" class="ghost" title="Recibir notificaciones cuando los instaladores cambian el estado de un trabajo">🔔 Avisos</button><button id="btnBio" class="ghost hide" title="Ingresar con Face ID en este dispositivo">Face ID</button><button id="btnClave" class="ghost" title="Cambiar tu contraseña">Contraseña</button><button id="btnSalir" class="ghost" title="Cerrar sesión">Salir</button></div></div>
   ${avisoBanner()}
   ${bannerCambios()}
@@ -1092,7 +1092,7 @@ function rInicio(el){
     ${(()=>{ const d=deudaProveedores(); return d.ars>0.5||d.usd>0.005?`<div class="tile acc"><span class="k">Debo a proveedores</span><span class="v">${money(d.ars+d.usd*tcGelin())}</span><span class="s">${d.usd>0.005?"incluye US$ "+fmtUsd(d.usd)+" de Gelin":"pesos"}</span></div>`:""; })()}
     <div class="tile ok"><span class="k">Ventas del mes</span><span class="v">${money(ventasMes)}</span><span class="s">Cobrado: ${money(cobrosMes)}</span></div>
   </div>
-  ${(()=>{ const prox=S.agenda.filter(agAbierto).sort((a,b)=>(agInicio(a)||0)-(agInicio(b)||0)).slice(0,5); return `<div class="panel"><div class="spread"><h2>Próximos trabajos</h2><a href="#agenda"><button class="sm">Ver agenda</button></a></div>${prox.length?prox.map(t=>`<div class="agItem click ${t.estado}" data-ag="${esc(t.id)}"><div class="agHora" style="font-size:14px;min-width:86px">${esc(t.fecha===ymd(new Date())?"Hoy":fdate(t.fecha+"T12:00:00").slice(0,5))} ${esc(t.hora||"")}</div><div style="min-width:0;flex:1"><div class="spread" style="gap:6px"><b>${esc(agCli(t))}</b>${pillAg(t)}</div><div class="muted" style="font-size:13px">${esc(t.tipo)}${t.direccion?" · "+esc(t.direccion):""}</div></div></div>`).join(""):`<div class="empty" style="padding:14px">No hay trabajos pendientes en la agenda.</div>`}</div>`; })()}
+  ${(()=>{ const prox=S.agenda.filter(agAbierto).sort((a,b)=>(agInicio(a)||0)-(agInicio(b)||0)).slice(0,5); return `<div class="panel"><div class="spread"><h2>Próximos trabajos</h2><a href="#agenda"><button class="sm">Ver agenda</button></a></div>${prox.length?prox.map(t=>`<div class="agItem click ${t.estado}" data-ag="${esc(t.id)}"><div class="agHora" style="font-size:14px;min-width:120px">${esc(t.fecha===ymd(new Date())?"Hoy "+fdate(t.fecha+"T12:00:00"):fdate(t.fecha+"T12:00:00"))} ${esc(t.hora||"")}</div><div style="min-width:0;flex:1"><div class="spread" style="gap:6px"><b>${esc(agCli(t))}</b>${pillAg(t)}</div><div class="muted" style="font-size:13px">${esc(t.tipo)}${t.direccion?" · "+esc(t.direccion):""}</div></div></div>`).join(""):`<div class="empty" style="padding:14px">No hay trabajos pendientes en la agenda.</div>`}</div>`; })()}
   <div class="grid g2">
     <div class="panel"><h2>Saldos pendientes</h2>${deudores.length?`<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th class="r">Saldo</th></tr></thead><tbody>${deudores.slice(0,8).map(x=>`<tr class="click" data-cli="${esc(x.c.id)}"><td>${esc(x.c.nombre)}</td><td class="r num saldo-pos">${money(x.s)}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">Ningún cliente debe dinero.</div>`}</div>
     <div class="panel"><h2>Pedidos en curso</h2>${pend.length?`<div class="tbl-wrap"><table><thead><tr><th>N°</th><th>Cliente</th><th>Estado</th><th class="r">Total</th></tr></thead><tbody>${pend.slice(0,8).map(p=>`<tr class="click" data-goped="1"><td class="mono">${pedNum(p.numero)}</td><td>${esc(cliNombre(p.clienteId))}</td><td>${pillPed(p.estado)}</td><td class="r num">${money(p.total)}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">No hay pedidos pendientes.</div>`}</div>
@@ -2459,7 +2459,7 @@ const agGastos = t => (t.gastos||[]).reduce((a,g)=>a+(Number(g.importe)||0),0);
 const agAtrasado = t => t.estado==="pendiente" && agInicio(t) && agInicio(t) < new Date(Date.now()-60*60*1000);
 const agCli = t => t.clienteId ? cliNombre(t.clienteId) : (t.clienteNombre||"Sin cliente");
 const pillAg = t => agAtrasado(t) ? `<span class="pill p-bad">Atrasado</span>` : (x=>`<span class="pill ${x[1]}">${x[0]}</span>`)(ESTADOS_AG[t.estado]||ESTADOS_AG.pendiente);
-const fdia = d => d.toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"});
+const fdia = d => d.toLocaleDateString("es-AR",{weekday:"long"})+" "+fdate(d);
 const ymd = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 const otNum = n => "OT-"+String(n||0).padStart(4,"0");
 // número para WhatsApp: con "+" o "00" adelante se respeta el código de país (ej. +51 Perú); si no, se toma como argentino
@@ -2485,6 +2485,9 @@ function textoOT(t){
 }
 // links para que el instalador conteste con un toque: abren un WhatsApp a la empresa con el mensaje armado
 function respuestasOT(t){
+  return ["", "📲 Marcá el avance, los materiales y la firma del cliente en tu panel: https://www.jaiseguridad.com/gestion/", "", "¡Gracias!"];
+}
+function respuestasOTviejo(t){
   const num=waNum(S.cfg.whatsRespuestas||S.cfg.telefono); const ot=otNum(t.numero);
   if(!num) return ["", "Al terminar, avisá por acá qué se hizo y qué materiales usaste. ¡Gracias!"];
   const l=(txt)=>"https://wa.me/"+num+"?text="+encodeURIComponent(txt);
@@ -2515,7 +2518,7 @@ function rAgenda(el){
   list.sort((a,b)=>(agInicio(a)||0)-(agInicio(b)||0)); if(f==="realizados"&&!dia) list.reverse();
   // agrupar por día
   const grupos=[]; list.forEach(t=>{ const g=grupos[grupos.length-1]; if(g&&g.fecha===t.fecha) g.items.push(t); else grupos.push({fecha:t.fecha,items:[t]}); });
-  const tituloDia = fe => { if(fe===hoy) return "Hoy"; if(fe===ymd(new Date(Date.now()+864e5))) return "Mañana"; if(fe===ymd(new Date(Date.now()-864e5))) return "Ayer"; const d=new Date(fe+"T12:00:00"); return isNaN(d)?"Sin fecha":fdia(d).replace(/^./,c=>c.toUpperCase()); };
+  const tituloDia = fe => { const fx=fdate(fe+"T12:00:00"); if(fe===hoy) return "Hoy "+fx; if(fe===ymd(new Date(Date.now()+864e5))) return "Mañana "+fx; if(fe===ymd(new Date(Date.now()-864e5))) return "Ayer "+fx; const d=new Date(fe+"T12:00:00"); return isNaN(d)?"Sin fecha":fdia(d).replace(/^./,c=>c.toUpperCase()); };
   el.innerHTML=`<div class="head"><div><h1>Agenda</h1><div class="muted">Services, visitas técnicas y trabajos pendientes</div></div>
     <div class="row">${"Notification" in window&&Notification.permission==="default"?`<button id="agNotif" title="Te avisa con una notificación mientras el dashboard está abierto">Activar avisos</button>`:""}<button id="agIcsAll" class="nomovil" title="Descarga un archivo con todos los trabajos pendientes para importarlos en tu calendario">Pasar pendientes al calendario</button><button id="agAcc" class="nomovil">Acceso para instaladores</button><button class="pri" id="agNew">Nuevo trabajo</button></div></div>
   ${avisoBanner()}
@@ -2909,7 +2912,7 @@ function renderTec(){ setTimeout(refrescarHilo,0);
   const rep=id=>(S.miParte.trabajos||{})[id]||{};
   const hecha=o=>!["pendiente","en_proceso"].includes(o.estado)||["realizado","no_realizado"].includes(rep(o.id).estado);
   const abiertas=mias.filter(o=>!hecha(o)), cerradas=mias.filter(hecha).filter(o=>o.fecha>=ymd(new Date(Date.now()-7*864e5))).reverse();
-  const card=o=>{ const r=rep(o.id), d=new Date(o.fecha+"T12:00:00"); const dia=o.fecha===hoy?"Hoy":o.fecha===ymd(new Date(Date.now()+864e5))?"Mañana":isNaN(d)?"":fdia(d).replace(/^./,c=>c.toUpperCase());
+  const card=o=>{ const r=rep(o.id), d=new Date(o.fecha+"T12:00:00"); const dia=o.fecha===hoy?"Hoy "+fdate(d):o.fecha===ymd(new Date(Date.now()+864e5))?"Mañana "+fdate(d):isNaN(d)?"":fdia(d).replace(/^./,c=>c.toUpperCase());
     const atras=!hecha(o)&&o.fecha<hoy;
     return `<div class="tecCard click ${atras?"atr":""}" data-ot="${esc(o.id)}">
       <div class="spread"><b class="mono">${otNum(o.numero)}</b>${r.estado?pillTec(r.estado,hhmm(r.ts)):atras?`<span class="pill p-bad">Atrasada</span>`:`<span class="pill p-warn">Pendiente</span>`}</div>
