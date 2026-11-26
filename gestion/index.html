@@ -273,6 +273,16 @@ body.modoTec .app,body.modoTec .tabbar,body.modoTec .sheet{display:none!importan
 .matElec{display:flex;gap:8px;align-items:center;font-size:14.5px;cursor:pointer;margin-top:4px}
 .matElec input{width:auto;flex:none}
 .compBox{display:flex;flex-direction:column;gap:6px}
+.hilo{display:flex;flex-direction:column;gap:8px;max-height:340px;overflow:auto;padding:2px}
+.cmt{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;max-width:88%;align-self:flex-start}
+.cmt.mio{align-self:flex-end;background:rgba(37,99,235,.10);border-color:rgba(37,99,235,.35)}
+.cmt.cierre{border-left:4px solid var(--good,#16a34a)}
+.cmtH{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-size:13px;margin-bottom:3px}
+.cmtH .muted{font-size:12px;margin-left:auto}
+.cmtT{font-size:15.5px;line-height:1.45;white-space:normal;word-break:break-word}
+.cmtIn{display:flex;gap:8px;align-items:flex-end}
+.cmtIn textarea{flex:1;font-size:15px;min-height:44px}
+.cmtPrev{font-size:13.5px;margin-top:4px;padding:5px 9px;border-radius:8px;background:var(--bg);border:1px solid var(--line);display:inline-block;max-width:100%}
 .firmaWrap{position:relative;border:1.5px dashed var(--line);border-radius:12px;background:#fff;overflow:hidden}
 .firmaWrap canvas{display:block;width:100%;height:180px;touch-action:none;cursor:crosshair}
 .firmaHint{position:absolute;left:14px;bottom:10px;color:#9aa3b2;font-size:13px;pointer-events:none;border-top:1px solid #c9ced8;padding-top:4px;width:calc(100% - 28px)}
@@ -889,7 +899,8 @@ async function importarArchivo(file){
 const VIEWS=["inicio","cotizador","cotizaciones","archivo","agenda","pedidos","clientes","cuentas","lista","gelin","propios","proveedores","empleados"];
 function view(){ const h=location.hash.slice(1); return VIEWS.includes(h)?h:"inicio"; }
 window.addEventListener("hashchange",()=>render());
-function render(){
+function refrescarHilo(){ const mm=document.querySelector("#modalRoot .modal"); if(mm&&mm._drawCom) try{ mm._drawCom(); }catch(_){} }
+function render(){ setTimeout(refrescarHilo,0);
   if(S.modoTec){ renderTec(); return; }
   const v=view();
   VIEWS.forEach(x=>$("#v-"+x).classList.toggle("hide",x!==v));
@@ -2515,7 +2526,7 @@ function rAgenda(el){
             <div class="muted" style="font-size:13px">${t.numero?`<span class="mono">${otNum(t.numero)}</span> · `:""}${esc(t.tipo||"Service")}${t.direccion?" · "+esc(t.direccion):""}${t.direccion||t.mapsUrl?` · <a href="${esc(linkMaps(t.direccion,t.mapsUrl))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">📍 Maps</a>`:""}</div>
             ${t.tecnico?`<div style="font-size:12.5px;margin-top:3px;display:flex;flex-wrap:wrap;gap:4px">${(tecsDe(t).length?tecsDe(t):[{id:"",nombre:t.tecnico}]).map(e=>{ const r=repsDe(t.id).find(x=>x.tecnicoId===e.id); const env=(t.otEnviadas||{})[e.id]||(tecIds(t).length===1&&t.otEnviada);
               return `<span class="pill p-info">🔧 ${esc(e.nombre)}</span>${r&&r.estado?pillTec(r.estado,hhmm(r.ts)):env?`<span class="pill p-good">Orden enviada</span>`:t.estado==="pendiente"?`<span class="pill p-mut">Sin enviar</span>`:""}`; }).join(`<span style="width:6px"></span>`)}${!repsDe(t.id).length&&t.estadoTec?pillTec(t.estadoTec,hhmm(t.estadoTecTs)):""}</div>`:""}
-            ${repsDe(t.id).filter(r=>r.nota).map(r=>`<div class="muted" style="font-size:12.5px;margin-top:2px">💬 ${esc(r.quien||"Instalador")}: ${esc(r.nota.slice(0,120))}</div>`).join("")}
+            ${(()=>{ const h=hiloDe(t); if(!h.length) return ""; const u=h[h.length-1]; return `<div class="cmtPrev">💬 <b>${h.length}</b> · ${esc(u.autor||"")}: ${esc(String(u.texto||"").slice(0,90))}${String(u.texto||"").length>90?"…":""}</div>`; })()}
             ${t.descripcion?`<div style="font-size:13.5px;margin-top:2px;overflow-wrap:anywhere">${esc(String(t.descripcion).slice(0,140))}</div>`:""}
             ${t.estado==="realizado"?`<div style="font-size:13px;margin-top:4px">Cobrado <b class="num" style="color:var(--good)">${money(t.cobrado)}</b> · Gastos <b class="num">${money(agGastos(t))}</b> · Ganancia <b class="num" style="color:${(Number(t.cobrado)||0)-agGastos(t)<0?"var(--bad)":"var(--good)"}">${money((Number(t.cobrado)||0)-agGastos(t))}</b></div>`:Number(t.precio)>0?`<div class="muted" style="font-size:13px;margin-top:4px">A cobrar: ${money(t.precio)}</div>`:""}
           </div></div>`).join("")}</div>`).join("")
@@ -2570,6 +2581,9 @@ function modalTrabajo(t0){
       <label class="f full">Qué hay que hacer<textarea id="tgDesc" rows="3" placeholder="Ej.: revisar cámara 3 que no graba, cambiar fuente del DVR">${esc(t.descripcion||"")}</textarea></label>
     </div>
     ${!nuevo?`<div class="panel" id="tgOtBox" style="display:flex;flex-direction:column;gap:6px"></div>`:""}
+    ${!nuevo?`<div class="panel" id="tgCom" style="display:flex;flex-direction:column;gap:8px"><h3>💬 Comentarios</h3><div class="hilo" id="tgComL"></div>
+      <div class="cmtIn"><textarea id="tgComT" rows="2" placeholder="Escribí un comentario para los instaladores…"></textarea><button type="button" class="pri" id="tgComOk">Enviar</button></div>
+      <div class="muted" style="font-size:12px">Los instaladores asignados lo ven en su orden y les llega un aviso.</div></div>`:""}
     <div class="panel" style="display:flex;flex-direction:column;gap:8px"><h3>Cobro y gastos</h3>
       <div class="fgrid fg2">
         <label class="f">Precio del servicio<input type="number" id="tgPre" step="1" value="${t.precio??""}" placeholder="0"></label>
@@ -2604,6 +2618,15 @@ function modalTrabajo(t0){
         <div class="tile ${cob-gs<0?"alert":"ok"}"><span class="k">Ganancia</span><span class="v" style="font-size:18px;color:${cob-gs<0?"var(--bad)":"var(--good)"}">${money(cob-gs)}</span></div></div>`;
     };
     $("#tgCob",m).oninput=draw; $("#tgPre",m).oninput=draw; draw();
+    // comentarios
+    const drawCom=()=>{ const l=$("#tgComL",m); if(!l) return; const vivo=S.agenda.find(x=>x.id===t.id)||t; const abajo=l.scrollHeight-l.scrollTop-l.clientHeight<40;
+      l.innerHTML=htmlHilo(hiloDe(vivo),"admin"); if(abajo||!l.dataset.ok){ l.scrollTop=l.scrollHeight; l.dataset.ok="1"; } };
+    drawCom(); m._drawCom=drawCom;
+    if($("#tgComOk",m)) $("#tgComOk",m).onclick=async()=>{ const tx=$("#tgComT",m).value.trim(); if(!tx){ $("#tgComT",m).focus(); return; }
+      const vivo=S.agenda.find(x=>x.id===t.id)||t; const lista=[...(vivo.comentarios||[]),{id:"c"+Date.now().toString(36),ts:new Date().toISOString(),texto:tx.slice(0,1000),autor:S.cfg.empresa||"JAI Seguridad"}];
+      const b=$("#tgComOk",m); b.disabled=true;
+      const ok=await write(()=>S.db.doc("agenda/"+t.id).update({comentarios:lista}),"Comentario enviado");
+      b.disabled=false; if(ok){ $("#tgComT",m).value=""; vivo.comentarios=lista; drawCom(); } };
     // materiales que cargaron los instaladores → el dueño les pone valor y pasan a gastos
     const drawMat=()=>{ const box=$("#tgMat",m); if(!box) return; const filas=materialesDe(t.id);
       // quita de gastos materiales que el instalador ya no reporta
@@ -2658,6 +2681,7 @@ function modalTrabajo(t0){
       const ref=nuevo?S.db.collection("agenda").doc():S.db.doc("agenda/"+t.id);
       const {id:_id,...previo}=t; const data={...previo,...d,numero:t.numero||nextNum(S.agenda),creado:t.creado||new Date().toISOString(),actualizado:new Date().toISOString()};
       if(t.otEnviada){ data.otEnviada=t.otEnviada; } if(t.otEnviadas) data.otEnviadas=t.otEnviadas;
+      { const vivo=S.agenda.find(x=>x.id===t.id); if(vivo&&vivo.comentarios) data.comentarios=vivo.comentarios; }
       // si se cambió el día, la hora o el aviso, el recordatorio vuelve a sonar
       if(nuevo||t.fecha!==d.fecha||t.hora!==d.hora||Number(t.aviso)!==d.aviso) data.avisado=false;
       const ok=await write(async()=>{ await ref.set(data); await sincCuentaAg(ref.id,data); },nuevo?"Trabajo agendado":"Trabajo guardado");
@@ -2733,7 +2757,7 @@ setInterval(revisarAvisos,30000);
 const ESTADOS_TEC={en_camino:["🚗 En camino","p-info"],en_sitio:["📍 En el lugar","p-info"],realizado:["✅ Terminado","p-good"],no_realizado:["⚠️ No se pudo hacer","p-bad"]};
 const pillTec = (e,extra) => { const x=ESTADOS_TEC[e]; return x?`<span class="pill ${x[1]}">${x[0]}${extra?" "+extra:""}</span>`:""; };
 const hhmm = iso => { const d=new Date(iso); return isNaN(d)?"":d.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}); };
-function ordenDe(t){ return {numero:t.numero||0,tipo:t.tipo||"Service",fecha:t.fecha||"",hora:t.hora||"",duracion:Number(t.duracion)||60,cliente:agCli(t),direccion:t.direccion||"",telefono:t.telefono||"",descripcion:t.descripcion||"",mapsUrl:t.mapsUrl||"",tecnicoId:tecIds(t)[0]||"",tecnicoIds:tecIds(t),tecnicos:tecIds(t).map(id=>({id,nombre:((S.empleados||[]).find(e=>e.id===id)||{}).nombre||"Instalador"})),tecnicoNombre:t.tecnico||"",estado:t.estado||"pendiente",empresa:S.cfg.empresa||"JAI Seguridad",whats:waNum(S.cfg.whatsRespuestas||S.cfg.telefono)||""}; }
+function ordenDe(t){ return {numero:t.numero||0,tipo:t.tipo||"Service",fecha:t.fecha||"",hora:t.hora||"",duracion:Number(t.duracion)||60,cliente:agCli(t),direccion:t.direccion||"",telefono:t.telefono||"",descripcion:t.descripcion||"",mapsUrl:t.mapsUrl||"",tecnicoId:tecIds(t)[0]||"",tecnicoIds:tecIds(t),tecnicos:tecIds(t).map(id=>({id,nombre:((S.empleados||[]).find(e=>e.id===id)||{}).nombre||"Instalador"})),tecnicoNombre:t.tecnico||"",estado:t.estado||"pendiente",empresa:S.cfg.empresa||"JAI Seguridad",whats:waNum(S.cfg.whatsRespuestas||S.cfg.telefono)||"",comentarios:(t.comentarios||[]).slice(-40)}; }
 // último reporte de un instalador sobre un trabajo
 // materiales reportados por los instaladores para un trabajo (una fila por material y por instalador)
 function materialesDe(id){
@@ -2741,6 +2765,19 @@ function materialesDe(id){
     const base=(r.parteId||"")+"|"+(x.k||"")+"|"+(x.item||""); let h=0; for(const ch of base) h=(h*31+ch.charCodeAt(0))>>>0;
     out.push({gid:"mat_"+h.toString(36),pkey:norm(x.item||x.k||""),item:x.item||x.k,cant:Number(x.cant),unidad:x.unidad||"u",quien:r.quien||"Instalador"}); }));
   return out;
+}
+// hilo de comentarios de un trabajo: los de cada instalador (en su parte), su informe de cierre y los del dueño (en la agenda)
+function hiloDe(t){
+  const out=[];
+  repsDe(t.id).forEach(r=>{ (r.comentarios||[]).forEach(c=>out.push({...c,autor:r.quien||"Instalador",tipo:"tec"}));
+    if(r.nota) out.push({id:"nota-"+r.parteId,ts:r.ts,texto:r.nota,autor:r.quien||"Instalador",tipo:"cierre",estado:r.estado}); });
+  (t.comentarios||[]).forEach(c=>out.push({...c,autor:c.autor||S.cfg.empresa||"JAI Seguridad",tipo:"admin"}));
+  return out.sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
+}
+function htmlHilo(lista,yo){
+  if(!lista.length) return `<div class="muted" style="font-size:14px;padding:6px 0">Todavía no hay comentarios.</div>`;
+  return lista.map(c=>{ const mio=c.tipo===yo;
+    return `<div class="cmt ${mio?"mio":""} ${c.tipo==="cierre"?"cierre":""}"><div class="cmtH"><b>${esc(c.autor||"")}</b>${c.tipo==="cierre"?` · <span>Informe de cierre${c.estado?" ("+esc((ESTADOS_TEC[c.estado]||[c.estado])[0])+")":""}</span>`:""}<span class="muted">${fdatetime(c.ts)}</span></div><div class="cmtT">${esc(c.texto||"").replace(/\n/g,"<br>")}</div>${c.foto?`<a href="#" data-comp="${esc(c.foto)}">📷 Ver foto</a>`:""}</div>`; }).join("");
 }
 function repsDe(id){ return (S.partes||[]).filter(p=>p.trabajos&&p.trabajos[id]).map(p=>({...p.trabajos[id],quien:p.nombre||"",tecnicoId:p.tecnicoId||"",parteId:p.id})).sort((a,b)=>String(b.ts).localeCompare(String(a.ts))); }
 function repDe(id){ let best=null; (S.partes||[]).forEach(p=>{ const r=p.trabajos&&p.trabajos[id]; if(r&&(!best||String(r.ts)>String(best.ts))) best={...r,quien:p.nombre||""}; }); return best; }
@@ -2842,7 +2879,7 @@ async function guardarParte(fn,msg){
   }
   localSet("jaiTec_"+(S.miId||"local"),JSON.stringify(p)); S.miParte=p; if(msg) toast(msg); renderTec(); return true;
 }
-function renderTec(){
+function renderTec(){ setTimeout(refrescarHilo,0);
   const el=$("#tecRoot"); if(!el) return;
   if(!S.ordenesOk||!S.parteOk){ el.innerHTML=`<div class="tecHead"><img src="${LOGO}" alt="JAI Seguridad"></div><div class="empty">Cargando tus órdenes…</div>`; return; }
   const yo=S.miParte&&S.miParte.tecnicoId;
@@ -2897,7 +2934,7 @@ function modalOT(id){
     <div class="panel"><h3>Trabajo a realizar</h3><div style="white-space:pre-wrap;font-size:14.5px">${esc(o.descripcion||"Sin detalle")}</div></div>
     ${S.soloLect?otAvisosWa(o):`<div class="panel" style="display:flex;flex-direction:column;gap:8px"><h3>¿Cómo va?</h3>
       <div class="tecEst">${Object.entries(ESTADOS_TEC).map(([k,v])=>`<button type="button" data-est="${k}" class="${r0.estado===k?"pri":""}">${v[0]}</button>`).join("")}</div>
-      <label class="f">Qué se hizo / comentarios<textarea id="otNota" rows="3" placeholder="Ej.: se cambió la fuente del DVR, quedó grabando las 4 cámaras">${esc(r0.nota||"")}</textarea></label>
+      <label class="f">Informe de cierre (qué se hizo)<textarea id="otNota" rows="3" placeholder="Ej.: se cambió la fuente del DVR, quedó grabando las 4 cámaras">${esc(r0.nota||"")}</textarea></label>
     </div>
     <div class="panel" style="display:flex;flex-direction:column;gap:10px"><h3>Materiales usados</h3>
       <div class="muted" style="font-size:13.5px;margin-top:-4px">Poné la cantidad de lo que usaste. Lo que no usaste, dejalo vacío.</div>
@@ -2911,6 +2948,8 @@ function modalOT(id){
           <input type="file" id="otElecF" accept="image/*" capture="environment" class="hide">
           <div id="otElecFv" class="muted" style="font-size:13px">${elecR0&&elecR0.comprobante?"✅ Comprobante cargado":"Obligatorio: sacale una foto al ticket o factura."}</div></div></div>
     </div>
+    <div class="panel" style="display:flex;flex-direction:column;gap:8px"><h3>💬 Comentarios</h3><div class="hilo" id="otComL"></div>
+      <div class="cmtIn"><textarea id="otComT" rows="2" placeholder="Escribí un comentario (se envía al momento)"></textarea><button type="button" class="pri" id="otComOk">Enviar</button></div></div>
     <div class="panel" style="display:flex;flex-direction:column;gap:8px" id="otFirmaP"><h3>✍️ Conformidad del cliente</h3>
       ${r0.firma?`<div id="otFirmaOk" class="banner info" style="justify-content:space-between;gap:8px"><span>✅ Firmado por <b>${esc(r0.firmaNombre||"el cliente")}</b> · ${fdatetime(r0.firmaTs)}</span><button type="button" class="sm" id="otFirmaRe">Volver a firmar</button></div>`:""}
       <div id="otFirmaBox" class="${r0.firma?"hide":""}" style="display:flex;flex-direction:column;gap:8px">
@@ -2933,6 +2972,15 @@ function modalOT(id){
     drawM();
     $("#otMok",m).onclick=()=>{ const d=$("#otMd",m).value.trim(), c=Number($("#otMc",m).value)||1; if(!d){ toast("Escribí qué material usaste."); $("#otMd",m).focus(); return; }
       otrosMat.push({k:"otro",item:d,cant:c,unidad:"u"}); $("#otMd",m).value=""; $("#otMc",m).value=""; drawM(); };
+    const drawCom=()=>{ const l=$("#otComL",m); if(!l) return; const ord=(S.ordenes||[]).find(x=>x.id===id)||o;
+      const mine=((S.miParte&&S.miParte.trabajos&&S.miParte.trabajos[id])||{}).comentarios||[];
+      const lista=[...mine.map(c=>({...c,autor:"Vos",tipo:"tec"})),...(ord.comentarios||[]).map(c=>({...c,autor:c.autor||"JAI Seguridad",tipo:"admin"}))].sort((a,b)=>String(a.ts).localeCompare(String(b.ts)));
+      l.innerHTML=htmlHilo(lista,"tec"); l.scrollTop=l.scrollHeight; };
+    drawCom(); m._drawCom=drawCom;
+    $("#otComOk",m).onclick=async()=>{ const tx=$("#otComT",m).value.trim(); if(!tx){ $("#otComT",m).focus(); return; }
+      const b=$("#otComOk",m); b.disabled=true;
+      const ok=await guardarParte(p=>{ const tr=p.trabajos[id]||{}; tr.comentarios=[...(tr.comentarios||[]),{id:"c"+Date.now().toString(36),ts:new Date().toISOString(),texto:tx.slice(0,1000)}]; p.trabajos[id]=tr; },"Comentario enviado");
+      b.disabled=false; if(ok){ $("#otComT",m).value=""; drawCom(); } };
     let fotoComp=null;
     const pad=padFirma($("#otFirma",m));
     $("#otFirmaClr",m).onclick=()=>pad.limpiar();
@@ -2971,7 +3019,7 @@ function modalOT(id){
         catch(err){ console.error(err); b.disabled=false; b.textContent="Guardar"; toast("No se pudo guardar la firma: "+(err.message||err)+". Revisá la señal y probá de nuevo."); return; }
         b.disabled=false; b.textContent="Guardar"; }
       else if(est==="realizado"&&!firma&&!window.confirm("El cliente todavía no firmó la conformidad. ¿Guardar igual sin firma?")){ $("#otFirmaP",m).scrollIntoView({behavior:"smooth",block:"center"}); return; }
-      const ok=await guardarParte(p=>{ p.trabajos[id]={estado:est,ts:new Date().toISOString(),nota,gastos:gs,materiales,cobrado:cob,medio:$("#otMed",m).value,...(firma?{firma,firmaNombre,firmaTs}:{})}; },"Guardado");
+      const ok=await guardarParte(p=>{ p.trabajos[id]={comentarios:((p.trabajos[id]||{}).comentarios||[]),estado:est,ts:new Date().toISOString(),nota,gastos:gs,materiales,cobrado:cob,medio:$("#otMed",m).value,...(firma?{firma,firmaNombre,firmaTs}:{})}; },"Guardado");
       if(ok) closeModal();
     };
   },620);
